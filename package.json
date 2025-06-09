@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "sharp": "^0.33.0",
-    "node-fetch": "^3.3.2" // <-- Añadir esta línea
+    "node-fetch": "^3.3.2"  // <<-- ESTA ES LA LÍNEA AÑADIDA
   },
   "engines": {
     "node": ">=18.0.0"
