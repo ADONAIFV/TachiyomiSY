@@ -10,27 +10,19 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // <<-- NUEVA LÍNEA: Máxima resolución de entrada para un pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión SUPER agresivos
+    // Perfiles de compresión SUPER agresivos (REDUCIDOS para mayor velocidad)
     COMPRESSION_LEVELS: [
-        // Nivel 1: Intento conservador pero agresivo
-        { manga: { webp: { quality: 45, effort: 6 }, jpeg: { quality: 50 } }, 
-          color: { webp: { quality: 35, effort: 6 }, jpeg: { quality: 40 } } },
-        
-        // Nivel 2: Compresión fuerte  
-        { manga: { webp: { quality: 35, effort: 6 }, jpeg: { quality: 40 } },
-          color: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } } },
-        
-        // Nivel 3: Compresión muy fuerte
+        // Nivel 1 (era Nivel 3): Compresión muy fuerte - Empezamos aquí
         { manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } },
           color: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } } },
         
-        // Nivel 4: Compresión extrema
+        // Nivel 2 (era Nivel 4): Compresión extrema
         { manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } },
           color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } } },
           
-        // Nivel 5: Compresión brutal (emergencia)
+        // Nivel 3 (era Nivel 5): Compresión brutal (emergencia)
         { manga: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } },
           color: { webp: { quality: 10, effort: 6 }, jpeg: { quality: 15 } } }
     ],
@@ -39,12 +31,11 @@ const SUPER_ULTRA_CONFIG = {
     SHARP_CONFIG: {
         limitInputPixels: false,
         sequentialRead: true,
-        density: 96,  // DPI muy bajo para menor tamaño
+        density: 96,
         failOn: 'none'
     },
     
     // Redimensionado MUY agresivo desde el principio
-    // <<-- CAMBIO AQUÍ: Menos pasos de redimensionado, más espaciados.
     RESIZE_STEPS: [
         800,     
         600,     
@@ -58,7 +49,6 @@ async function detectImageType(buffer) {
     try {
         const { channels } = await sharp(buffer).stats()
         
-        // Si tiene más de 1 canal y parece colorido (cálculo de saturación más simple)
         if (channels > 1) {
             const { channels: imageChannels } = await sharp(buffer).stats()
             const avgSaturationMetric = imageChannels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / imageChannels.length;
@@ -77,14 +67,13 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         SUPER_ULTRA_CONFIG.MAX_OUTPUT_SIZE_STRICT : 
         SUPER_ULTRA_CONFIG.MAX_OUTPUT_SIZE_RELAXED
     
-    // Detectar tipo de imagen
-    const imageType = await detectImageType(buffer)
-    console.log(`🎯 Tipo detectado: ${imageType}, Meta: ${Math.round(maxSize/1024)}KB`)
+    const originalInputSize = buffer.length; // Guardar el tamaño original de la entrada
+    console.log(`🎯 Tipo detectado: ${await detectImageType(buffer)}, Meta: ${Math.round(maxSize/1024)}KB`)
     
     let currentBuffer = buffer
     let finalResult = null
 
-    // <<-- NUEVA LÓGICA: Pre-redimensionado si la imagen es muy grande
+    // Pre-redimensionado si la imagen es muy grande
     try {
         const metadata = await sharp(currentBuffer).metadata();
         if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
@@ -98,14 +87,12 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         }
     } catch (e) {
         console.warn("No se pudo obtener metadatos para pre-redimensionado:", e.message);
-        // Continuar con el buffer original si hay un error al obtener metadatos
     }
-    // <<-- FIN NUEVA LÓGICA
-
+    
     // Intentar cada nivel de compresión
     for (let level = 0; level < SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS.length; level++) {
         const config = SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS[level][imageType]
-        console.log(`🔄 Nivel ${level + 1}: quality=${config.webp?.quality || config.jpeg?.quality}`)
+        console.log(`🔄 Nivel ${level + 1}: quality=${config.webp?.quality || config.jpeg?.quality}`) // Nivel ajustado para la consola
         
         // Intentar cada paso de redimensionado
         for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
@@ -130,16 +117,19 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                             buffer: webpResult,
                             format: 'webp',
                             size: webpResult.length,
-                            originalSize: buffer.length,
-                            compression: Math.round((1 - webpResult.length/buffer.length) * 100),
+                            originalSize: originalInputSize, // Usar el tamaño original de la entrada
+                            compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
                             level: level + 1,
                             width: width
                         }
                     }
-                    finalResult = finalResult || { buffer: webpResult, format: 'webp', size: webpResult.length }
+                    // Siempre guardar el mejor resultado (más pequeño) encontrado hasta ahora
+                    if (!finalResult || webpResult.length < finalResult.size) {
+                         finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
+                    }
                 }
                 
-                // Intentar JPEG si WebP no es suficiente
+                // Intentar JPEG si WebP no es suficiente o si JPEG es más pequeño
                 if (config.jpeg) {
                     const jpegResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                         .jpeg(config.jpeg)
@@ -152,40 +142,43 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                             buffer: jpegResult,
                             format: 'jpeg',
                             size: jpegResult.length,
-                            originalSize: buffer.length,
-                            compression: Math.round((1 - jpegResult.length/buffer.length) * 100),
+                            originalSize: originalInputSize, // Usar el tamaño original de la entrada
+                            compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
                             level: level + 1,
                             width: width
                         }
                     }
-                    finalResult = finalResult || { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
+                    // Siempre guardar el mejor resultado (más pequeño) encontrado hasta ahora
+                    if (!finalResult || jpegResult.length < finalResult.size) {
+                        finalResult = { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
+                    }
                 }
                 
             } catch (error) {
-                console.log(`⚠️ Error en width ${width}:`, error.message)
-                // Si hay un error con un redimensionado específico, no detengas el bucle
-                // Simplemente continua intentando con el siguiente tamaño o nivel de compresión
+                console.log(`⚠️ Error en width ${width} para nivel ${level + 1}:`, error.message)
                 continue 
             }
         }
     }
     
-    // Si llegamos aquí, usar el mejor resultado disponible (el más pequeño encontrado que no haya superado el tamaño objetivo)
+    // Si llegamos aquí, significa que ningún intento logró el tamaño objetivo.
+    // Devolvemos el mejor resultado que hayamos conseguido.
     if (finalResult) {
-        console.log(`🏁 Usando mejor resultado (no se alcanzó meta): ${Math.round(finalResult.size/1024)}KB`)
+        console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
-            originalSize: buffer.length,
-            compression: Math.round((1 - finalResult.size/buffer.length) * 100),
-            level: 'max', // Indica que se usó el nivel máximo de intentos
-            width: 'auto' // No se garantiza un ancho específico
+            originalSize: originalInputSize,
+            compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
+            level: 'max_attempts', // Indica que se usó el nivel máximo de intentos sin alcanzar la meta
+            width: 'auto' 
         }
     }
     
-    throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró un resultado válido')
+    // Fallback si no se pudo comprimir en absoluto (muy improbable con esta configuración)
+    throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró ningún resultado válido')
 }
 
-// Función para descargar imagen (VERSIÓN CORREGIDA para arrayBuffer())
+// Función para descargar imagen
 async function downloadImage(url) {
     try {
         console.log(`📥 Intentando descargar: ${url}`);
@@ -205,8 +198,8 @@ async function downloadImage(url) {
             throw new Error(`HTTP Error Status: ${response.status} - ${response.statusText} for URL: ${url}`);
         }
 
-        const arrayBuffer = await response.arrayBuffer(); // <<-- CAMBIO: Usar arrayBuffer()
-        const buffer = Buffer.from(arrayBuffer);          // <<-- CAMBIO: Convertir a Node.js Buffer
+        const arrayBuffer = await response.arrayBuffer(); 
+        const buffer = Buffer.from(arrayBuffer);          
         
         console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`);
         return buffer;
@@ -291,7 +284,6 @@ export default async (req, res) => {
         }
         
         console.log(`🚀 Procesando: ${imageUrl} (modo: ${mode})`)
-        console.log(`🎯 Meta: ${mode === 'strict' ? '50KB' : '100KB'} por imagen`)
         
         // Descargar imagen
         const imageBuffer = await downloadImage(imageUrl)
