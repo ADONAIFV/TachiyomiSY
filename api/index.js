@@ -10,12 +10,12 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // <<-- Aumentado a 1200px para pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión SUPER agresivos (CALIDAD DE COLOR MUCHO MÁS ALTA)
+    // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD PARA COLOR)
     COMPRESSION_PROFILE: { 
         manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
-        color: { webp: { quality: 40, effort: 6 }, jpeg: { quality: 45 } }  // <<-- CAMBIO CLAVE: Aumentado drásticamente a 40/45
+        color: { webp: { quality: 50, effort: 6 }, jpeg: { quality: 55 } }  // <<-- CAMBIO CLAVE: Aumentado drásticamente a 50/55
     },
     
     // Configuración Sharp SUPER optimizada
@@ -28,7 +28,7 @@ const SUPER_ULTRA_CONFIG = {
     
     // Redimensionado MUY agresivo desde el principio
     RESIZE_STEPS: [ 
-        800, // <<-- Empezar desde 800px para más detalle inicial
+        800, // Empezar desde 800px para más detalle inicial
         600, 
         500  
     ]
