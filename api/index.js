@@ -1,8 +1,8 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
 // Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
 
-const sharp = require('sharp')
-const fetch = require('node-fetch') // <<-- Importa node-fetch
+import sharp from 'sharp';       // <<-- CAMBIO AQUÍ
+import fetch from 'node-fetch'; // <<-- CAMBIO AQUÍ
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
@@ -202,7 +202,10 @@ async function downloadImage(url) {
 }
 
 // HANDLER PRINCIPAL PARA VERCEL SERVERLESS
-module.exports = async (req, res) => {
+// Nota: 'module.exports' es una característica de CommonJS. 
+// A pesar de usar "type": "module", Vercel (y Node.js) aún lo soporta
+// para el handler de API Routes para compatibilidad.
+export default async (req, res) => { // <<-- CAMBIO AQUÍ: 'module.exports' a 'export default'
     // Configurar CORS
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -262,6 +265,7 @@ module.exports = async (req, res) => {
     
     try {
         // Extraer parámetros
+        // URL global es parte de Node.js, no requiere import de 'url'
         const url = new URL(req.url, `http://${req.headers.host}`) 
         const imageUrl = url.searchParams.get('url')
         const mode = url.searchParams.get('mode') || 'strict'
