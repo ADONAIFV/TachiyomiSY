@@ -3,7 +3,7 @@
   "version": "4.0.0",
   "description": "Compresión extrema de imágenes para manga - Garantiza capítulos completos <1-2MB",
   "main": "api/index.js",
-  "type": "module",  // <<-- ¡AQUÍ FALTABA UNA COMA! Ahora está correcta.
+  "type": "module",
   "scripts": {
     "start": "node api/index.js",
     "dev": "NODE_ENV=development node api/index.js",
