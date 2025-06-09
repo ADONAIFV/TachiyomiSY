@@ -10,21 +10,20 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1000, // <<-- Reducido a 1000px para un pre-redimensionado más agresivo
     
-    // Perfiles de compresión SUPER agresivos (REDUCIDOS para mayor velocidad)
+    // Perfiles de compresión SUPER agresivos (AÚN MÁS REDUCIDOS para máxima velocidad)
     COMPRESSION_LEVELS: [
-        // Nivel 1 (era Nivel 3): Compresión muy fuerte - Empezamos aquí
+        // Nivel 1 (era original Nivel 3): Compresión muy fuerte - Empezamos aquí
         { manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } },
           color: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } } },
         
-        // Nivel 2 (era Nivel 4): Compresión extrema
+        // Nivel 2 (era original Nivel 4): Compresión extrema - Si el nivel 1 no es suficiente
         { manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } },
-          color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } } },
-          
-        // Nivel 3 (era Nivel 5): Compresión brutal (emergencia)
-        { manga: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } },
-          color: { webp: { quality: 10, effort: 6 }, jpeg: { quality: 15 } } }
+          color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } } }
+        
+        // Se eliminó el Nivel 5 original (más brutal) para reducir el número de intentos
+        // Si el Nivel 2 no es suficiente, se devolverá el mejor resultado de Nivel 2.
     ],
     
     // Configuración Sharp SUPER optimizada
@@ -35,12 +34,11 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado MUY agresivo desde el principio
-    RESIZE_STEPS: [
-        800,     
-        600,     
-        450,     
-        350      
+    // Redimensionado MUY agresivo desde el principio (MENOS PASOS)
+    RESIZE_STEPS: [ // <<-- MENOS PASOS Y MÁS ESPACIADOS
+        600, // Empezar directamente desde 600px
+        450,
+        300  // Tamaño final muy pequeño
     ]
 }
 
@@ -69,8 +67,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     
     const originalInputSize = buffer.length; 
     
-    // <<-- CAMBIO CLAVE AQUÍ: Asignar el resultado de detectImageType a una variable
-    const imageType = await detectImageType(buffer); 
+    const imageType = await detectImageType(buffer); // <<-- Llamada una sola vez
     console.log(`🎯 Tipo detectado: ${imageType}, Meta: ${Math.round(maxSize/1024)}KB`)
     
     let currentBuffer = buffer
