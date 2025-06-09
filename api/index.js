@@ -67,8 +67,11 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         SUPER_ULTRA_CONFIG.MAX_OUTPUT_SIZE_STRICT : 
         SUPER_ULTRA_CONFIG.MAX_OUTPUT_SIZE_RELAXED
     
-    const originalInputSize = buffer.length; // Guardar el tamaño original de la entrada
-    console.log(`🎯 Tipo detectado: ${await detectImageType(buffer)}, Meta: ${Math.round(maxSize/1024)}KB`)
+    const originalInputSize = buffer.length; 
+    
+    // <<-- CAMBIO CLAVE AQUÍ: Asignar el resultado de detectImageType a una variable
+    const imageType = await detectImageType(buffer); 
+    console.log(`🎯 Tipo detectado: ${imageType}, Meta: ${Math.round(maxSize/1024)}KB`)
     
     let currentBuffer = buffer
     let finalResult = null
@@ -92,7 +95,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     // Intentar cada nivel de compresión
     for (let level = 0; level < SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS.length; level++) {
         const config = SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS[level][imageType]
-        console.log(`🔄 Nivel ${level + 1}: quality=${config.webp?.quality || config.jpeg?.quality}`) // Nivel ajustado para la consola
+        console.log(`🔄 Nivel ${level + 1}: quality=${config.webp?.quality || config.jpeg?.quality}`)
         
         // Intentar cada paso de redimensionado
         for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
@@ -117,13 +120,12 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                             buffer: webpResult,
                             format: 'webp',
                             size: webpResult.length,
-                            originalSize: originalInputSize, // Usar el tamaño original de la entrada
+                            originalSize: originalInputSize, 
                             compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
                             level: level + 1,
                             width: width
                         }
                     }
-                    // Siempre guardar el mejor resultado (más pequeño) encontrado hasta ahora
                     if (!finalResult || webpResult.length < finalResult.size) {
                          finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
                     }
@@ -142,13 +144,12 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                             buffer: jpegResult,
                             format: 'jpeg',
                             size: jpegResult.length,
-                            originalSize: originalInputSize, // Usar el tamaño original de la entrada
+                            originalSize: originalInputSize, 
                             compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
                             level: level + 1,
                             width: width
                         }
                     }
-                    // Siempre guardar el mejor resultado (más pequeño) encontrado hasta ahora
                     if (!finalResult || jpegResult.length < finalResult.size) {
                         finalResult = { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
                     }
@@ -161,20 +162,17 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         }
     }
     
-    // Si llegamos aquí, significa que ningún intento logró el tamaño objetivo.
-    // Devolvemos el mejor resultado que hayamos conseguido.
     if (finalResult) {
         console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'max_attempts', // Indica que se usó el nivel máximo de intentos sin alcanzar la meta
+            level: 'max_attempts', 
             width: 'auto' 
         }
     }
     
-    // Fallback si no se pudo comprimir en absoluto (muy improbable con esta configuración)
     throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró ningún resultado válido')
 }
 
