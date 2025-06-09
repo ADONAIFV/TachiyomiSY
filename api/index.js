@@ -2,7 +2,7 @@
 // Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
 
 const sharp = require('sharp')
-const fetch = require('node-fetch') // <<-- NUEVA LÍNEA: Importa node-fetch
+const fetch = require('node-fetch') // <<-- Importa node-fetch
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
@@ -56,7 +56,7 @@ const SUPER_ULTRA_CONFIG = {
 // Función para detectar si es manga (blanco y negro) o color
 async function detectImageType(buffer) {
     try {
-        const { channels } = await sharp(buffer).stats() // 'isColourSpace' ya no existe en versiones recientes de sharp
+        const { channels } = await sharp(buffer).stats()
         
         // Si tiene más de 1 canal y parece colorido (cálculo de saturación más simple)
         if (channels > 1) {
@@ -262,7 +262,6 @@ module.exports = async (req, res) => {
     
     try {
         // Extraer parámetros
-        // URL global es parte de Node.js, no requiere import de 'url'
         const url = new URL(req.url, `http://${req.headers.host}`) 
         const imageUrl = url.searchParams.get('url')
         const mode = url.searchParams.get('mode') || 'strict'
@@ -308,7 +307,7 @@ module.exports = async (req, res) => {
         res.status(200).send(result.buffer)
         
     } catch (error) {
-        console.error('❌ Error en el handler principal:', error.message) // Mensaje más específico
+        console.error('❌ Error en el handler principal:', error.message)
         res.status(500).json({
             error: 'Error en super ultra compresión',
             message: process.env.NODE_ENV === 'development' ? error.message : 'Error procesando imagen',
