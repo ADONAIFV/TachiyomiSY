@@ -8,14 +8,14 @@ import fetch from 'node-fetch';
 const SUPER_ULTRA_CONFIG = {
     // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
-    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen (20 páginas = 2.4MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
     // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD PARA COLOR)
     COMPRESSION_PROFILE: { 
         manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
-        color: { webp: { quality: 50, effort: 6 }, jpeg: { quality: 55 } }  // <<-- CAMBIO CLAVE: Aumentado drásticamente a 50/55
+        color: { webp: { quality: 50, effort: 6 }, jpeg: { quality: 55 } }  
     },
     
     // Configuración Sharp SUPER optimizada
@@ -28,9 +28,8 @@ const SUPER_ULTRA_CONFIG = {
     
     // Redimensionado MUY agresivo desde el principio
     RESIZE_STEPS: [ 
-        800, // Empezar desde 800px para más detalle inicial
-        600, 
-        500  
+        800, // <<-- CAMBIO CLAVE: Se mantiene 800px
+        600  // <<-- CAMBIO CLAVE: Se añade 600px
     ]
 }
 
@@ -84,7 +83,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
     
-    // Intentar cada paso de redimensionado
+    // Intentar cada paso de redimensionado (ahora hay 800px y 600px)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
