@@ -12,9 +12,9 @@
     "sharp": "^0.33.0",
     "node-fetch": "^3.3.2"
   },
-  "engines": {        // <<-- ASEGÚRATE DE QUE "engines" ESTÉ ENTRE COMILLAS DOBLES
+  "engines": {
     "node": ">=18.0.0"
-  },
+  },  // <--- ¡Aquí faltaba una coma! Ahora está el cierre de llave seguido de la coma.
   "keywords": [
     "image-compression",
     "bandwidth-optimization", 
