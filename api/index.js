@@ -10,21 +10,13 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1000, // <<-- Reducido a 1000px para un pre-redimensionado más agresivo
-    
-    // Perfiles de compresión SUPER agresivos (AÚN MÁS REDUCIDOS para máxima velocidad)
-    COMPRESSION_LEVELS: [
-        // Nivel 1 (era original Nivel 3): Compresión muy fuerte - Empezamos aquí
-        { manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } },
-          color: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } } },
-        
-        // Nivel 2 (era original Nivel 4): Compresión extrema - Si el nivel 1 no es suficiente
-        { manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } },
-          color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } } }
-        
-        // Se eliminó el Nivel 5 original (más brutal) para reducir el número de intentos
-        // Si el Nivel 2 no es suficiente, se devolverá el mejor resultado de Nivel 2.
-    ],
+    MAX_INPUT_RESOLUTION_WIDTH: 1000, // Máxima resolución de entrada para un pre-redimensionado
+
+    // <<-- CAMBIO CLAVE: Un único perfil de compresión MUY agresivo
+    COMPRESSION_PROFILE: { 
+        manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }, // Basado en el antiguo "Nivel 2 (extremo)"
+        color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } }  // Basado en el antiguo "Nivel 2 (extremo)"
+    },
     
     // Configuración Sharp SUPER optimizada
     SHARP_CONFIG: {
@@ -34,10 +26,9 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado MUY agresivo desde el principio (MENOS PASOS)
-    RESIZE_STEPS: [ // <<-- MENOS PASOS Y MÁS ESPACIADOS
-        600, // Empezar directamente desde 600px
-        450,
+    // Redimensionado MUY agresivo desde el principio (AÚN MENOS PASOS Y MÁS PEQUEÑOS)
+    RESIZE_STEPS: [ 
+        400, // Empezar directamente desde 400px (o incluso 350px si es necesario)
         300  // Tamaño final muy pequeño
     ]
 }
@@ -67,7 +58,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     
     const originalInputSize = buffer.length; 
     
-    const imageType = await detectImageType(buffer); // <<-- Llamada una sola vez
+    const imageType = await detectImageType(buffer); 
     console.log(`🎯 Tipo detectado: ${imageType}, Meta: ${Math.round(maxSize/1024)}KB`)
     
     let currentBuffer = buffer
@@ -89,83 +80,83 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         console.warn("No se pudo obtener metadatos para pre-redimensionado:", e.message);
     }
     
-    // Intentar cada nivel de compresión
-    for (let level = 0; level < SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS.length; level++) {
-        const config = SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS[level][imageType]
-        console.log(`🔄 Nivel ${level + 1}: quality=${config.webp?.quality || config.jpeg?.quality}`)
-        
-        // Intentar cada paso de redimensionado
-        for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
-            try {
-                const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                    .resize(width, null, { 
-                        withoutEnlargement: true,
-                        fit: 'inside'
-                    })
+    // <<-- CAMBIO CLAVE: Ya no hay bucle de COMPRESSION_LEVELS, se usa un perfil directo
+    const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
+    console.log(`🔄 Calidad de compresión: quality=${config.webp?.quality || config.jpeg?.quality}`);
+    
+    // Intentar cada paso de redimensionado
+    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
+        try {
+            const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                .resize(width, null, { 
+                    withoutEnlargement: true,
+                    fit: 'inside'
+                })
+                .toBuffer()
+            
+            // Intentar WebP primero (mejor compresión)
+            if (config.webp) {
+                const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .webp(config.webp)
                     .toBuffer()
                 
-                // Intentar WebP primero (mejor compresión)
-                if (config.webp) {
-                    const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                        .webp(config.webp)
-                        .toBuffer()
-                    
-                    console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
-                    
-                    if (webpResult.length <= maxSize) {
-                        return {
-                            buffer: webpResult,
-                            format: 'webp',
-                            size: webpResult.length,
-                            originalSize: originalInputSize, 
-                            compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                            level: level + 1,
-                            width: width
-                        }
-                    }
-                    if (!finalResult || webpResult.length < finalResult.size) {
-                         finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
+                console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
+                
+                if (webpResult.length <= maxSize) {
+                    return {
+                        buffer: webpResult,
+                        format: 'webp',
+                        size: webpResult.length,
+                        originalSize: originalInputSize, 
+                        compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
+                        level: 1, // Siempre 1 ahora, ya que solo hay un perfil
+                        width: width
                     }
                 }
-                
-                // Intentar JPEG si WebP no es suficiente o si JPEG es más pequeño
-                if (config.jpeg) {
-                    const jpegResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                        .jpeg(config.jpeg)
-                        .toBuffer()
-                    
-                    console.log(`📊 JPEG ${width}px: ${Math.round(jpegResult.length/1024)}KB`)
-                    
-                    if (jpegResult.length <= maxSize) {
-                        return {
-                            buffer: jpegResult,
-                            format: 'jpeg',
-                            size: jpegResult.length,
-                            originalSize: originalInputSize, 
-                            compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
-                            level: level + 1,
-                            width: width
-                        }
-                    }
-                    if (!finalResult || jpegResult.length < finalResult.size) {
-                        finalResult = { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
-                    }
+                if (!finalResult || webpResult.length < finalResult.size) {
+                     finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
                 }
-                
-            } catch (error) {
-                console.log(`⚠️ Error en width ${width} para nivel ${level + 1}:`, error.message)
-                continue 
             }
+            
+            // Intentar JPEG si WebP no es suficiente o si JPEG es más pequeño
+            if (config.jpeg) {
+                const jpegResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .jpeg(config.jpeg)
+                    .toBuffer()
+                
+                console.log(`📊 JPEG ${width}px: ${Math.round(jpegResult.length/1024)}KB`)
+                
+                if (jpegResult.length <= maxSize) {
+                    return {
+                        buffer: jpegResult,
+                        format: 'jpeg',
+                        size: jpegResult.length,
+                        originalSize: originalInputSize, 
+                        compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
+                        level: 1, // Siempre 1 ahora
+                        width: width
+                    }
+                }
+                if (!finalResult || jpegResult.length < finalResult.size) {
+                    finalResult = { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
+                }
+            }
+            
+        } catch (error) {
+            console.log(`⚠️ Error en width ${width}:`, error.message) // Nivel de compresión ya no aplica aquí
+            continue 
         }
     }
     
+    // Si llegamos aquí, significa que ningún intento logró el tamaño objetivo.
+    // Devolvemos el mejor resultado que hayamos conseguido.
     if (finalResult) {
         console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'max_attempts', 
+            level: 'max_attempts', // Indica que se usó el nivel máximo de intentos sin alcanzar la meta
             width: 'auto' 
         }
     }
