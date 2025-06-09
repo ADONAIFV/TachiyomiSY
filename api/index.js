@@ -11,11 +11,11 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1000, // Máxima resolución de entrada para un pre-redimensionado
-
-    // <<-- CAMBIO CLAVE: Un único perfil de compresión MUY agresivo
+    
+    // Perfiles de compresión SUPER agresivos (OPTIMIZADOS PARA CALIDAD COLOR)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }, // Basado en el antiguo "Nivel 2 (extremo)"
-        color: { webp: { quality: 15, effort: 6 }, jpeg: { quality: 20 } }  // Basado en el antiguo "Nivel 2 (extremo)"
+        manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }, 
+        color: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }  // <<-- CAMBIO CLAVE: Aumentado de 15/20 a 20/25
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,10 +26,11 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado MUY agresivo desde el principio (AÚN MENOS PASOS Y MÁS PEQUEÑOS)
+    // Redimensionado MUY agresivo desde el principio (AJUSTADO)
     RESIZE_STEPS: [ 
-        400, // Empezar directamente desde 400px (o incluso 350px si es necesario)
-        300  // Tamaño final muy pequeño
+        500, // <<-- Nuevo paso: Empezar desde 500px para dar un poco más de detalle
+        400, 
+        300  
     ]
 }
 
@@ -41,6 +42,7 @@ async function detectImageType(buffer) {
         if (channels > 1) {
             const { channels: imageChannels } = await sharp(buffer).stats()
             const avgSaturationMetric = imageChannels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / imageChannels.length;
+            // Umbral de 30 para diferenciar. Si la imagen es muy poco saturada, sigue siendo manga.
             return avgSaturationMetric > 30 ? 'color' : 'manga';
         }
         return 'manga'
@@ -80,9 +82,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         console.warn("No se pudo obtener metadatos para pre-redimensionado:", e.message);
     }
     
-    // <<-- CAMBIO CLAVE: Ya no hay bucle de COMPRESSION_LEVELS, se usa un perfil directo
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
-    console.log(`🔄 Calidad de compresión: quality=${config.webp?.quality || config.jpeg?.quality}`);
+    console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
     
     // Intentar cada paso de redimensionado
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
@@ -109,7 +110,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                         size: webpResult.length,
                         originalSize: originalInputSize, 
                         compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                        level: 1, // Siempre 1 ahora, ya que solo hay un perfil
+                        level: config.webp.quality, // Usar la calidad WebP como "nivel" para referencia
                         width: width
                     }
                 }
@@ -133,7 +134,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                         size: jpegResult.length,
                         originalSize: originalInputSize, 
                         compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
-                        level: 1, // Siempre 1 ahora
+                        level: config.jpeg.quality, // Usar la calidad JPEG como "nivel" para referencia
                         width: width
                     }
                 }
@@ -143,20 +144,18 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             }
             
         } catch (error) {
-            console.log(`⚠️ Error en width ${width}:`, error.message) // Nivel de compresión ya no aplica aquí
+            console.log(`⚠️ Error en width ${width}:`, error.message)
             continue 
         }
     }
     
-    // Si llegamos aquí, significa que ningún intento logró el tamaño objetivo.
-    // Devolvemos el mejor resultado que hayamos conseguido.
     if (finalResult) {
         console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'max_attempts', // Indica que se usó el nivel máximo de intentos sin alcanzar la meta
+            level: 'best_effort', // Nivel para indicar que no se logró el objetivo
             width: 'auto' 
         }
     }
