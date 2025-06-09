@@ -14,7 +14,7 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },  // <--- ¡Aquí faltaba una coma! Ahora está el cierre de llave seguido de la coma.
+  },
   "keywords": [
     "image-compression",
     "bandwidth-optimization", 
