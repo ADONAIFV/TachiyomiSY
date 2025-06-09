@@ -2,9 +2,11 @@
 // Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
 
 const sharp = require('sharp')
+const fetch = require('node-fetch') // <-- Añadir esta línea
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
+    // ... (resto de tu configuración, no la cambies) ...
     // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
@@ -164,57 +166,48 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     throw new Error('No se pudo comprimir la imagen lo suficiente')
 }
 
-// Función para descargar imagen
+// Función para descargar imagen (NUEVA VERSIÓN con node-fetch)
 async function downloadImage(url) {
-    const https = require('https')
-    const http = require('http')
-    const { URL } = require('url')
-    
-    return new Promise((resolve, reject) => {
-        try {
-            const parsedUrl = new URL(url)
-            const protocol = parsedUrl.protocol === 'https:' ? https : http
-            
-            const req = protocol.get(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; BandwidthHero/4.0)',
-                    'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1'
-                },
-                timeout: 30000
-            }, (res) => {
-                if (res.statusCode !== 200) {
-                    reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`))
-                    return
-                }
-                
-                const chunks = []
-                res.on('data', chunk => chunks.push(chunk))
-                res.on('end', () => {
-                    const buffer = Buffer.concat(chunks)
-                    console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB`)
-                    resolve(buffer)
-                })
-                res.on('error', reject)
-            })
-            
-            req.on('timeout', () => {
-                req.destroy()
-                reject(new Error('Timeout downloading image'))
-            })
-            
-            req.on('error', reject)
-            
-        } catch (error) {
-            reject(error)
+    // Usamos AbortController para manejar timeouts con fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos de timeout
+
+    try {
+        const response = await fetch(url, {
+            // User-Agent y otros headers para simular navegador
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; BandwidthHero/4.0)',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            },
+            redirect: 'follow', // <-- fetch sigue redirecciones por defecto, pero lo dejamos explícito
+            signal: controller.signal // Para manejar el timeout
+        });
+
+        clearTimeout(timeoutId); // Limpiar el timeout si la respuesta llega a tiempo
+
+        if (!response.ok) { // response.ok es true para 2xx status codes
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-    })
+
+        const buffer = await response.buffer(); // Obtener el cuerpo como un Buffer
+        console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB`);
+        return buffer;
+
+    } catch (error) {
+        clearTimeout(timeoutId); // Asegurarse de limpiar el timeout en caso de error
+        if (error.name === 'AbortError') {
+            throw new Error('Timeout downloading image');
+        }
+        throw error; // Re-lanzar otros errores
+    }
 }
 
 // HANDLER PRINCIPAL PARA VERCEL SERVERLESS
 module.exports = async (req, res) => {
+    // ... (resto de tu handler, no lo cambies) ...
     // Configurar CORS
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
