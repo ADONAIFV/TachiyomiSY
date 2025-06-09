@@ -9,7 +9,8 @@
     "test": "echo \"Bandwidth Hero SUPER ULTRA ready\" && exit 0"
   },
   "dependencies": {
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "node-fetch": "^3.3.2" // <-- Añadir esta línea
   },
   "engines": {
     "node": ">=18.0.0"
