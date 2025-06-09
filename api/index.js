@@ -12,10 +12,10 @@ const SUPER_ULTRA_CONFIG = {
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1000, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión SUPER agresivos (OPTIMIZADOS PARA CALIDAD COLOR)
+    // Perfiles de compresión SUPER agresivos (CALIDAD DE COLOR IGUAL A MANGA)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }, 
-        color: { webp: { quality: 20, effort: 6 }, jpeg: { quality: 25 } }  // <<-- CAMBIO CLAVE: Aumentado de 15/20 a 20/25
+        manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
+        color: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }  // <<-- CAMBIO CLAVE: Calidad de color igualada a manga (25/30)
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,9 +26,9 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado MUY agresivo desde el principio (AJUSTADO)
+    // Redimensionado MUY agresivo desde el principio
     RESIZE_STEPS: [ 
-        500, // <<-- Nuevo paso: Empezar desde 500px para dar un poco más de detalle
+        500, // Empezar desde 500px para dar un poco más de detalle
         400, 
         300  
     ]
@@ -42,7 +42,6 @@ async function detectImageType(buffer) {
         if (channels > 1) {
             const { channels: imageChannels } = await sharp(buffer).stats()
             const avgSaturationMetric = imageChannels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / imageChannels.length;
-            // Umbral de 30 para diferenciar. Si la imagen es muy poco saturada, sigue siendo manga.
             return avgSaturationMetric > 30 ? 'color' : 'manga';
         }
         return 'manga'
@@ -110,7 +109,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                         size: webpResult.length,
                         originalSize: originalInputSize, 
                         compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                        level: config.webp.quality, // Usar la calidad WebP como "nivel" para referencia
+                        level: config.webp.quality, 
                         width: width
                     }
                 }
@@ -134,7 +133,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                         size: jpegResult.length,
                         originalSize: originalInputSize, 
                         compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
-                        level: config.jpeg.quality, // Usar la calidad JPEG como "nivel" para referencia
+                        level: config.jpeg.quality, 
                         width: width
                     }
                 }
@@ -155,7 +154,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'best_effort', // Nivel para indicar que no se logró el objetivo
+            level: 'best_effort', 
             width: 'auto' 
         }
     }
