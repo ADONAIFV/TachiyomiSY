@@ -2,11 +2,10 @@
 // Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
 
 const sharp = require('sharp')
-const fetch = require('node-fetch') // <-- Añadir esta línea
+const fetch = require('node-fetch') // <<-- NUEVA LÍNEA: Importa node-fetch
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
-    // ... (resto de tu configuración, no la cambies) ...
     // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
@@ -57,17 +56,22 @@ const SUPER_ULTRA_CONFIG = {
 // Función para detectar si es manga (blanco y negro) o color
 async function detectImageType(buffer) {
     try {
-        const { channels, isColourSpace } = await sharp(buffer).stats()
+        const { channels } = await sharp(buffer).stats() // 'isColourSpace' ya no existe en versiones recientes de sharp
         
-        // Si tiene más de 1 canal y parece colorido
+        // Si tiene más de 1 canal y parece colorido (cálculo de saturación más simple)
         if (channels > 1) {
-            const stats = await sharp(buffer).stats()
-            const avgSaturation = stats.channels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / stats.channels.length
-            return avgSaturation > 30 ? 'color' : 'manga'
+            const { channels: imageChannels } = await sharp(buffer).stats()
+            // Suma la diferencia entre el máximo y mínimo de cada canal para estimar la saturación.
+            // Si la imagen es blanco y negro, la diferencia entre min/max para R, G, B será muy pequeña o 0.
+            const avgSaturationMetric = imageChannels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / imageChannels.length;
+            
+            // Un umbral de 30 es un buen punto de partida para diferenciar
+            return avgSaturationMetric > 30 ? 'color' : 'manga';
         }
-        return 'manga'
-    } catch {
-        return 'manga' // Default fallback
+        return 'manga' // Default para imágenes en escala de grises o con un solo canal
+    } catch (e) {
+        console.warn("Error detecting image type, defaulting to 'manga':", e.message);
+        return 'manga' // Default fallback en caso de error de sharp
     }
 }
 
@@ -166,15 +170,11 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     throw new Error('No se pudo comprimir la imagen lo suficiente')
 }
 
-// Función para descargar imagen (NUEVA VERSIÓN con node-fetch)
+// Función para descargar imagen (NUEVA VERSIÓN con node-fetch para seguir redirecciones)
 async function downloadImage(url) {
-    // Usamos AbortController para manejar timeouts con fetch
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos de timeout
-
     try {
+        console.log(`📥 Intentando descargar: ${url}`);
         const response = await fetch(url, {
-            // User-Agent y otros headers para simular navegador
             headers: {
                 'User-Agent': 'Mozilla/5.0 (compatible; BandwidthHero/4.0)',
                 'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
@@ -182,32 +182,27 @@ async function downloadImage(url) {
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             },
-            redirect: 'follow', // <-- fetch sigue redirecciones por defecto, pero lo dejamos explícito
-            signal: controller.signal // Para manejar el timeout
+            timeout: 30000, // Timeout para la solicitud completa (30 segundos)
+            redirect: 'follow' // node-fetch sigue redirecciones por defecto, pero es bueno ser explícito
         });
 
-        clearTimeout(timeoutId); // Limpiar el timeout si la respuesta llega a tiempo
-
-        if (!response.ok) { // response.ok es true para 2xx status codes
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+            // Si la respuesta no es 2xx, lanza un error
+            throw new Error(`HTTP Error Status: ${response.status} - ${response.statusText} for URL: ${url}`);
         }
 
-        const buffer = await response.buffer(); // Obtener el cuerpo como un Buffer
-        console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB`);
+        const buffer = await response.buffer(); // Obtiene el cuerpo de la respuesta como un Buffer
+        console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`); // response.url mostrará la URL final después de redirecciones
         return buffer;
 
     } catch (error) {
-        clearTimeout(timeoutId); // Asegurarse de limpiar el timeout en caso de error
-        if (error.name === 'AbortError') {
-            throw new Error('Timeout downloading image');
-        }
-        throw error; // Re-lanzar otros errores
+        console.error(`❌ Error al descargar imagen ${url}:`, error.message);
+        throw error; // Re-lanza el error para que sea capturado por el handler principal
     }
 }
 
 // HANDLER PRINCIPAL PARA VERCEL SERVERLESS
 module.exports = async (req, res) => {
-    // ... (resto de tu handler, no lo cambies) ...
     // Configurar CORS
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -267,7 +262,8 @@ module.exports = async (req, res) => {
     
     try {
         // Extraer parámetros
-        const url = new URL(req.url, `http://${req.headers.host}`)
+        // URL global es parte de Node.js, no requiere import de 'url'
+        const url = new URL(req.url, `http://${req.headers.host}`) 
         const imageUrl = url.searchParams.get('url')
         const mode = url.searchParams.get('mode') || 'strict'
         
@@ -312,7 +308,7 @@ module.exports = async (req, res) => {
         res.status(200).send(result.buffer)
         
     } catch (error) {
-        console.error('❌ Error:', error.message)
+        console.error('❌ Error en el handler principal:', error.message) // Mensaje más específico
         res.status(500).json({
             error: 'Error en super ultra compresión',
             message: process.env.NODE_ENV === 'development' ? error.message : 'Error procesando imagen',
