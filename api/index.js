@@ -1,8 +1,8 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
 // Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
 
-import sharp from 'sharp';       // <<-- CAMBIO AQUÍ
-import fetch from 'node-fetch'; // <<-- CAMBIO AQUÍ
+import sharp from 'sharp';
+import fetch from 'node-fetch';
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
@@ -10,6 +10,7 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (20 páginas = 2MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
+    MAX_INPUT_RESOLUTION_WIDTH: 1200, // <<-- NUEVA LÍNEA: Máxima resolución de entrada para un pre-redimensionado
     
     // Perfiles de compresión SUPER agresivos
     COMPRESSION_LEVELS: [
@@ -43,13 +44,12 @@ const SUPER_ULTRA_CONFIG = {
     },
     
     // Redimensionado MUY agresivo desde el principio
+    // <<-- CAMBIO AQUÍ: Menos pasos de redimensionado, más espaciados.
     RESIZE_STEPS: [
-        800,     // Empezar redimensionando agresivamente
-        700,     
+        800,     
         600,     
-        500,     
-        400,     
-        350      // Tamaño final muy pequeño
+        450,     
+        350      
     ]
 }
 
@@ -61,17 +61,13 @@ async function detectImageType(buffer) {
         // Si tiene más de 1 canal y parece colorido (cálculo de saturación más simple)
         if (channels > 1) {
             const { channels: imageChannels } = await sharp(buffer).stats()
-            // Suma la diferencia entre el máximo y mínimo de cada canal para estimar la saturación.
-            // Si la imagen es blanco y negro, la diferencia entre min/max para R, G, B será muy pequeña o 0.
             const avgSaturationMetric = imageChannels.reduce((acc, ch) => acc + (ch.max - ch.min), 0) / imageChannels.length;
-            
-            // Un umbral de 30 es un buen punto de partida para diferenciar
             return avgSaturationMetric > 30 ? 'color' : 'manga';
         }
-        return 'manga' // Default para imágenes en escala de grises o con un solo canal
+        return 'manga'
     } catch (e) {
         console.warn("Error detecting image type, defaulting to 'manga':", e.message);
-        return 'manga' // Default fallback en caso de error de sharp
+        return 'manga'
     }
 }
 
@@ -87,7 +83,25 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     
     let currentBuffer = buffer
     let finalResult = null
-    
+
+    // <<-- NUEVA LÓGICA: Pre-redimensionado si la imagen es muy grande
+    try {
+        const metadata = await sharp(currentBuffer).metadata();
+        if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
+            console.log(`📏 Imagen inicial muy grande (${metadata.width}px). Redimensionando a ${SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH}px.`);
+            currentBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                .resize(SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH, null, { 
+                    withoutEnlargement: true,
+                    fit: 'inside'
+                })
+                .toBuffer();
+        }
+    } catch (e) {
+        console.warn("No se pudo obtener metadatos para pre-redimensionado:", e.message);
+        // Continuar con el buffer original si hay un error al obtener metadatos
+    }
+    // <<-- FIN NUEVA LÓGICA
+
     // Intentar cada nivel de compresión
     for (let level = 0; level < SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS.length; level++) {
         const config = SUPER_ULTRA_CONFIG.COMPRESSION_LEVELS[level][imageType]
@@ -96,7 +110,6 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         // Intentar cada paso de redimensionado
         for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
             try {
-                // Redimensionar si es necesario
                 const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                     .resize(width, null, { 
                         withoutEnlargement: true,
@@ -150,27 +163,29 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 
             } catch (error) {
                 console.log(`⚠️ Error en width ${width}:`, error.message)
-                continue
+                // Si hay un error con un redimensionado específico, no detengas el bucle
+                // Simplemente continua intentando con el siguiente tamaño o nivel de compresión
+                continue 
             }
         }
     }
     
-    // Si llegamos aquí, usar el mejor resultado disponible
+    // Si llegamos aquí, usar el mejor resultado disponible (el más pequeño encontrado que no haya superado el tamaño objetivo)
     if (finalResult) {
-        console.log(`🏁 Usando mejor resultado: ${Math.round(finalResult.size/1024)}KB`)
+        console.log(`🏁 Usando mejor resultado (no se alcanzó meta): ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
             originalSize: buffer.length,
             compression: Math.round((1 - finalResult.size/buffer.length) * 100),
-            level: 'max',
-            width: 'auto'
+            level: 'max', // Indica que se usó el nivel máximo de intentos
+            width: 'auto' // No se garantiza un ancho específico
         }
     }
     
-    throw new Error('No se pudo comprimir la imagen lo suficiente')
+    throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró un resultado válido')
 }
 
-// Función para descargar imagen (NUEVA VERSIÓN con node-fetch para seguir redirecciones)
+// Función para descargar imagen (VERSIÓN CORREGIDA para arrayBuffer())
 async function downloadImage(url) {
     try {
         console.log(`📥 Intentando descargar: ${url}`);
@@ -182,30 +197,28 @@ async function downloadImage(url) {
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             },
-            timeout: 30000, // Timeout para la solicitud completa (30 segundos)
-            redirect: 'follow' // node-fetch sigue redirecciones por defecto, pero es bueno ser explícito
+            timeout: 30000, 
+            redirect: 'follow'
         });
 
         if (!response.ok) {
-            // Si la respuesta no es 2xx, lanza un error
             throw new Error(`HTTP Error Status: ${response.status} - ${response.statusText} for URL: ${url}`);
         }
 
-        const buffer = await response.buffer(); // Obtiene el cuerpo de la respuesta como un Buffer
-        console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`); // response.url mostrará la URL final después de redirecciones
+        const arrayBuffer = await response.arrayBuffer(); // <<-- CAMBIO: Usar arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer);          // <<-- CAMBIO: Convertir a Node.js Buffer
+        
+        console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`);
         return buffer;
 
     } catch (error) {
         console.error(`❌ Error al descargar imagen ${url}:`, error.message);
-        throw error; // Re-lanza el error para que sea capturado por el handler principal
+        throw error;
     }
 }
 
 // HANDLER PRINCIPAL PARA VERCEL SERVERLESS
-// Nota: 'module.exports' es una característica de CommonJS. 
-// A pesar de usar "type": "module", Vercel (y Node.js) aún lo soporta
-// para el handler de API Routes para compatibilidad.
-export default async (req, res) => { // <<-- CAMBIO AQUÍ: 'module.exports' a 'export default'
+export default async (req, res) => {
     // Configurar CORS
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -265,7 +278,6 @@ export default async (req, res) => { // <<-- CAMBIO AQUÍ: 'module.exports' a 'e
     
     try {
         // Extraer parámetros
-        // URL global es parte de Node.js, no requiere import de 'url'
         const url = new URL(req.url, `http://${req.headers.host}`) 
         const imageUrl = url.searchParams.get('url')
         const mode = url.searchParams.get('mode') || 'strict'
@@ -286,7 +298,7 @@ export default async (req, res) => { // <<-- CAMBIO AQUÍ: 'module.exports' a 'e
         
         // Verificar tamaño de entrada
         if (imageBuffer.length > SUPER_ULTRA_CONFIG.MAX_INPUT_SIZE) {
-            throw new Error(`Imagen muy grande: ${Math.round(imageBuffer.length/1024/1024)}MB > 15MB límite`)
+            throw new Error(`Imagen muy grande: ${Math.round(imageBuffer.length/1024/1024)}MB > ${SUPER_ULTRA_CONFIG.MAX_INPUT_SIZE/1024/1024}MB límite`)
         }
         
         // Comprimir con algoritmo SUPER ULTRA
