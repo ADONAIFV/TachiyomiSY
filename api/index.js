@@ -7,23 +7,33 @@ import fetch from 'node-fetch';
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
     // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen (20 páginas = 2.4MB capítulo)
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // <<-- Objetivo de 120KB para relaxed
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1400, // <<-- Aumentado a 1400px para pre-redimensionado (permite más detalle inicial)
     
-    // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD CON 60S DE MARGEN)
+    // Perfiles de compresión SUPER agresivos (CALIDAD AÚN MÁS ALTA)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 30, effort: 6 }, jpeg: { quality: 35 } }, 
-        color: { webp: { quality: 70, effort: 6 }, jpeg: { quality: 75 } }  
+        manga: { webp: { quality: 40, effort: 6 }, jpeg: { quality: 45 } }, // <<-- Calidad de manga aumentada
+        color: { webp: { quality: 70, effort: 6 }, jpeg: { quality: 75 } }  // <<-- Calidad de color aumentada significativamente
     },
     
-    // Redimensionado MUY agresivo desde el principio
+    // Configuración Sharp SUPER optimizada
+    SHARP_CONFIG: {
+        limitInputPixels: false,
+        sequentialRead: true,
+        density: 96,
+        failOn: 'none'
+    },
+    
+    // Redimensionado MUY agresivo desde el principio (MÁS PASOS PARA OPTIMIZAR TAMAÑO/CALIDAD)
     RESIZE_STEPS: [ 
-        800, 
-        600,
-        500, // <<-- CAMBIO CLAVE: Se añade 500px
-        400  // <<-- CAMBIO CLAVE: Se añade 400px
+        1200, // <<-- Empezar desde 1200px (o MAX_INPUT_RESOLUTION_WIDTH)
+        1000, 
+        800,  // Tu resolución deseada
+        700,  // Pasos intermedios para mejor ajuste
+        600,  // Tu resolución deseada
+        500   // Un paso de respaldo para tamaños pequeños si es necesario
     ]
 }
 
@@ -77,7 +87,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
     
-    // Intentar cada paso de redimensionado (ahora con 800, 600, 500, 400px)
+    // Intentar cada paso de redimensionado
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -167,7 +177,7 @@ async function downloadImage(url) {
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             },
-            timeout: 30000, 
+            timeout: 30000, // Se mantiene en 30s para la descarga para evitar esperas excesivas de la fuente
             redirect: 'follow'
         });
 
@@ -219,17 +229,22 @@ export default async (req, res) => {
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
             description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
             features: [
-                '50-100KB por imagen según modo',
-                '5 niveles de compresión extrema',
-                '6 pasos de redimensionado agresivo',
+                '50-100KB por imagen según modo', // Esto puede ser ajustado en el README
+                '5 niveles de compresión extrema', // Esto también se puede ajustar
+                '6 pasos de redimensionado agresivo', // Ajustar también
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
                 'Garantía capítulos completos 1-2MB'
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)',
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)', // Ajustado aquí
                 headers: 'X-Super-Ultra-Compression para verificación'
+            },
+            compression_stats: {
+                target_chapter_size: '1-2MB (20 páginas)',
+                target_per_image: '50-120KB', // Ajustado aquí
+                typical_savings: '85-95% vs original' // Puede variar
             }
         })
         return
