@@ -1,5 +1,6 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
 // Compresión: Optimización para legibilidad en 600px y tamaño < 100KB.
+// Forzado a formato WebP.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
@@ -8,15 +9,15 @@ import fetch from 'node-fetch';
 const SUPER_ULTRA_CONFIG = {
     // Límites de tamaño de salida
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
-    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (objetivo)
+    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // <<-- CAMBIO CLAVE: 100KB por imagen para modo relaxed
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
     MAX_INPUT_RESOLUTION_WIDTH: 600, // Redimensionar entradas grandes a 600px
     
     // Perfil de compresión ÚNICO para WebP (Calidad 5)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 5, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 5
-        color: { webp: { quality: 5, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 5
+        manga: { webp: { quality: 5, effort: 6 } }, // Calidad WebP 5
+        color: { webp: { quality: 5, effort: 6 } }  // Calidad WebP 5
     },
     
     // Configuración Sharp SUPER optimizada
@@ -95,6 +96,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 .toBuffer()
             
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                .toFormat('webp') // <<-- CAMBIO CLAVE: Forzar explícitamente el formato WebP
                 .webp(config.webp) 
                 .toBuffer()
             
@@ -117,6 +119,9 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             
         } catch (error) {
             console.log(`⚠️ Error en width ${width}:`, error.message)
+            // Si hay un error de Sharp en la compresión, finalResult podría quedar null,
+            // lo que llevaría al error final de "no se pudo comprimir".
+            // Esto es preferible a enviar un archivo no-WebP con un header WebP.
             break; 
         }
     }
