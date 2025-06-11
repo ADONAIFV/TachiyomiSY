@@ -1,21 +1,27 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
-// Compresión extrema: 50-100KB por imagen para capítulos ultra-ligeros
+// Compresión extrema: Hasta 120KB por imagen para capítulos ultra-ligeros
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
-    // Límites EXTREMOS
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen para modo relaxed
+    // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen (20 páginas = 2.4MB capítulo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1200,    // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión OPTIMIZADOS para balance calidad/tamaño/velocidad
+    // Perfiles de compresión: AVIF como principal, WebP como fallback
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
-        color: { webp: { quality: 40, effort: 6 }, jpeg: { quality: 45 } }  // <<-- CAMBIO CLAVE: Calidad ajustada a 40/45
+        manga: { 
+            avif: { quality: 30, effort: 4 }, // AVIF para manga, un poco más rápido (effort 4)
+            webp: { quality: 30, effort: 6 }  // WebP para manga, si AVIF no es suficiente o lento
+        }, 
+        color: { 
+            avif: { quality: 45, effort: 4 }, // AVIF para color, calidad más alta (45)
+            webp: { quality: 50, effort: 6 }  // WebP para color, como fallback de alta calidad (50)
+        }  
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,10 +32,10 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado estratégico para balance velocidad/calidad
+    // Pasos de redimensionado específicos: 600px y 500px
     RESIZE_STEPS: [ 
-        600, // <<-- CAMBIO CLAVE: Primer intento a 600px
-        500  // <<-- CAMBIO CLAVE: Segundo intento a 500px
+        600, 
+        500  
     ]
 }
 
@@ -80,8 +86,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         console.warn("No se pudo obtener metadatos para pre-redimensionado:", e.message);
     }
     
-    const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
-    console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
+    const profile = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
+    console.log(`🔄 Perfil de compresión para ${imageType}.`);
     
     // Intentar cada paso de redimensionado (600px y 500px)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
@@ -93,51 +99,52 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 })
                 .toBuffer()
             
-            // Intentar WebP primero (mejor compresión)
-            if (config.webp) {
-                const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                    .webp(config.webp)
+            // >> PRIMER INTENTO: AVIF (si está configurado)
+            if (profile.avif) {
+                const avifResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .avif(profile.avif)
                     .toBuffer()
                 
-                console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
+                console.log(`📊 AVIF ${width}px: ${Math.round(avifResult.length/1024)}KB (quality: ${profile.avif.quality})`)
+                
+                if (avifResult.length <= maxSize) {
+                    return {
+                        buffer: avifResult,
+                        format: 'avif', // Formato AVIF
+                        size: avifResult.length,
+                        originalSize: originalInputSize, 
+                        compression: Math.round((1 - avifResult.length/originalInputSize) * 100),
+                        level: profile.avif.quality, 
+                        width: width
+                    }
+                }
+                if (!finalResult || avifResult.length < finalResult.size) {
+                     finalResult = { buffer: avifResult, format: 'avif', size: avifResult.length } // Guarda el mejor AVIF
+                }
+            }
+            
+            // >> SEGUNDO INTENTO: WebP (si AVIF no fue suficiente o no se intentó)
+            if (profile.webp) {
+                const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .webp(profile.webp)
+                    .toBuffer()
+                
+                console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB (quality: ${profile.webp.quality})`)
                 
                 if (webpResult.length <= maxSize) {
                     return {
                         buffer: webpResult,
-                        format: 'webp',
+                        format: 'webp', // Formato WebP
                         size: webpResult.length,
                         originalSize: originalInputSize, 
                         compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                        level: config.webp.quality, 
+                        level: profile.webp.quality, 
                         width: width
                     }
                 }
+                // Si no se alcanza el tamaño objetivo, guarda el mejor resultado encontrado (incluyendo WebP)
                 if (!finalResult || webpResult.length < finalResult.size) {
-                     finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
-                }
-            }
-            
-            // Intentar JPEG si WebP no es suficiente o si JPEG es más pequeño
-            if (config.jpeg) {
-                const jpegResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                    .jpeg(config.jpeg)
-                    .toBuffer()
-                
-                console.log(`📊 JPEG ${width}px: ${Math.round(jpegResult.length/1024)}KB`)
-                
-                if (jpegResult.length <= maxSize) {
-                    return {
-                        buffer: jpegResult,
-                        format: 'jpeg',
-                        size: jpegResult.length,
-                        originalSize: originalInputSize, 
-                        compression: Math.round((1 - jpegResult.length/originalInputSize) * 100),
-                        level: config.jpeg.quality, 
-                        width: width
-                    }
-                }
-                if (!finalResult || jpegResult.length < finalResult.size) {
-                    finalResult = { buffer: jpegResult, format: 'jpeg', size: jpegResult.length }
+                     finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length } 
                 }
             }
             
@@ -147,6 +154,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
         }
     }
     
+    // Si llegamos aquí, significa que ningún intento logró el tamaño objetivo.
+    // Devolvemos el mejor resultado que hayamos conseguido (AVIF o WebP)
     if (finalResult) {
         console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
@@ -223,24 +232,24 @@ export default async (req, res) => {
     if (req.url === '/info') {
         res.status(200).json({
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
-            description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
+            description: 'Compresión extrema garantizada para capítulos de manga <1-2.4MB',
             features: [
-                '50-100KB por imagen según modo',
-                '5 niveles de compresión extrema',
-                '6 pasos de redimensionado agresivo',
+                '50-120KB por imagen según modo',
+                'Compresión ultra-agresiva con WebP y AVIF (si es posible)', // Actualizado para AVIF
+                'Redimensionado a 600px/500px',
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
-                'Garantía capítulos completos 1-2MB'
+                'Garantía capítulos completos 1-2.4MB'
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)',
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)',
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
-                target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-100KB',
-                typical_savings: '85-95% vs original'
+                target_chapter_size: '1-2.4MB (20 páginas)',
+                target_per_image: '50-120KB',
+                typical_savings: 'varía, pero muy alto (mayor con AVIF)'
             }
         })
         return
@@ -283,7 +292,7 @@ export default async (req, res) => {
         console.log(`📊 Nivel ${result.level}, ${result.width}px, formato ${result.format}`)
         
         // Configurar headers de respuesta
-        const contentType = result.format === 'webp' ? 'image/webp' : 'image/jpeg'
+        const contentType = `image/${result.format}`; // Usar el formato de la imagen comprimida
         res.setHeader('Content-Type', contentType)
         res.setHeader('Content-Length', result.size)
         res.setHeader('X-Original-Size', result.originalSize)
