@@ -11,17 +11,17 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // <<-- CAMBIO CLAVE: 100KB por imagen para modo relaxed
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
-    MAX_INPUT_RESOLUTION_WIDTH: 600, // <<-- Redimensionar entradas grandes a 600px
+    MAX_INPUT_RESOLUTION_WIDTH: 600, // Redimensionar entradas grandes a 600px
     
-    // Perfil de compresión ÚNICO para WebP (Calidad 15 - excelente equilibrio)
+    // Perfil de compresión ÚNICO para WebP (Calidad 10 - excelente equilibrio)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 15, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 15
-        color: { webp: { quality: 15, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 15
+        manga: { webp: { quality: 10, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 10
+        color: { webp: { quality: 10, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 10
     },
     
     // Resolución preferida para todas las imágenes (600px)
     RESIZE_STEPS: [ 
-        600 // <<-- CAMBIO CLAVE: Solo 600px como objetivo de redimensionado
+        600 // Solo 600px como objetivo de redimensionado
     ]
 }
 
@@ -191,9 +191,9 @@ export default async (req, res) => {
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
             description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
             features: [
-                '50-100KB por imagen según modo', // <<-- Actualizado aquí
+                '50-100KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 15 (excelente equilibrio)', // <<-- Actualizado aquí
+                'Calidad WebP 10 (excelente equilibrio)', // <<-- Actualizado aquí
                 'Redimensionado a 600px',             // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
@@ -201,12 +201,12 @@ export default async (req, res) => {
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)', // <<-- Actualizado aquí
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)', 
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
                 target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-100KB', // <<-- Actualizado aquí
+                target_per_image: '50-100KB', 
                 typical_savings: '85-95% vs original'
             }
         })
