@@ -1,21 +1,22 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
-// Compresión extrema: Archivos ultra-pequeños, priorizando tamaño sobre calidad visual.
+// Compresión: Optimización para legibilidad en 1200px y tamaño < 120KB.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
-    // Límites EXTREMOS - Los tamaños de salida serán muy bajos con calidad 1
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen (objetivo)
+    // Límites de tamaño de salida
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
+    // MAX_INPUT_RESOLUTION_WIDTH se usará para el pre-redimensionado
+    MAX_INPUT_RESOLUTION_WIDTH: 1200, 
     
-    // Perfil de compresión ÚNICO para WebP (CALIDAD 1: MÁXIMA COMPRESIÓN)
+    // Perfil de compresión ÚNICO para WebP (Calidad 30 - buen equilibrio)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 1, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 1
-        color: { webp: { quality: 1, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 1 para color también
+        manga: { webp: { quality: 30, effort: 6 } }, // <<-- Calidad WebP 30
+        color: { webp: { quality: 30, effort: 6 } }  // <<-- Calidad WebP 30
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,9 +27,9 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado a resolución fija de 1200px
+    // Resolución preferida para todas las imágenes
     RESIZE_STEPS: [ 
-        1200 // <<-- CAMBIO CLAVE: Solo 1200px
+        1200 // <<-- Solo 1200px como objetivo de redimensionado principal
     ]
 }
 
@@ -63,15 +64,16 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     let currentBuffer = buffer
     let finalResult = null
 
-    // Pre-redimensionado si la imagen es muy grande
+    // Pre-redimensionado a 1200px si la imagen es más grande
+    // Importante: No escalará imágenes pequeñas a 1200px si son menores,
+    // mantendrá su resolución original y aplicará calidad 30.
     try {
         const metadata = await sharp(currentBuffer).metadata();
-        // Si la imagen ya es más pequeña que 1200px, se mantiene su tamaño original
         if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
             console.log(`📏 Imagen inicial muy grande (${metadata.width}px). Redimensionando a ${SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH}px.`);
             currentBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .resize(SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH, null, { 
-                    withoutEnlargement: true,
+                    withoutEnlargement: true, // Mantener esta opción
                     fit: 'inside'
                 })
                 .toBuffer();
@@ -83,17 +85,20 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
-    // Intentar cada paso de redimensionado (ahora solo 1200px)
-    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
+    // Intentar con la resolución de 1200px (o la resolución original si es menor y no se amplía)
+    // El bucle de RESIZE_STEPS ahora solo tiene 1200px
+    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { // Este bucle correrá solo una vez
         try {
+            // Si la imagen original (o la pre-redimensionada) ya es menor que 'width' (1200),
+            // y 'withoutEnlargement' es true, Sharp usará la resolución actual.
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .resize(width, null, { 
-                    withoutEnlargement: true,
+                    withoutEnlargement: true, 
                     fit: 'inside'
                 })
                 .toBuffer()
             
-            // Siempre intentar WebP (ahora es el único formato)
+            // Siempre intentar WebP
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .webp(config.webp) 
                 .toBuffer()
@@ -117,7 +122,9 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             
         } catch (error) {
             console.log(`⚠️ Error en width ${width}:`, error.message)
-            continue 
+            // Si hay un error con el redimensionado, finalResult seguirá siendo null o el mejor resultado encontrado hasta ahora.
+            // Para una única pasada, esto no es tan crítico como en un bucle con múltiples opciones.
+            break; // Salir del bucle si hay un error o ya se hizo el único intento
         }
     }
     
@@ -127,7 +134,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'best_effort', 
+            level: 'best_effort', // Indica que no se logró el objetivo de tamaño, pero se devolvió el mejor intento con calidad 30.
             width: 'auto' 
         }
     }
@@ -201,8 +208,8 @@ export default async (req, res) => {
             features: [
                 '50-120KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 1 (máxima compresión)', // <<-- Actualizado aquí
-                'Redimensionado a 1200px',             // <<-- Actualizado aquí
+                'Calidad WebP 30 fija',          // <<-- Actualizado aquí
+                'Redimensionado a 1200px',       // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
                 'Garantía capítulos completos 1-2MB'
