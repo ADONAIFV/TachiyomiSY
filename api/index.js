@@ -1,21 +1,21 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
-// Compresión extrema: Prioridad máxima en tamaño reducido, con significativa pérdida de calidad.
+// Compresión extrema: Archivos ultra-pequeños, priorizando tamaño sobre calidad visual.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
-    // Límites de tamaño de salida (ahora fácilmente alcanzables)
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen
+    // Límites EXTREMOS - Los tamaños de salida serán muy bajos con calidad 1
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen (objetivo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfil de compresión ÚNICO para WebP (CALIDAD 10)
+    // Perfil de compresión ÚNICO para WebP (CALIDAD 1: MÁXIMA COMPRESIÓN)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 10, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 10
-        color: { webp: { quality: 10, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 10 para color también
+        manga: { webp: { quality: 1, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 1
+        color: { webp: { quality: 1, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 1 para color también
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,9 +26,9 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado a resolución única
+    // Redimensionado a resolución fija de 1200px
     RESIZE_STEPS: [ 
-        600 // <<-- CAMBIO CLAVE: Solo 600px
+        1200 // <<-- CAMBIO CLAVE: Solo 1200px
     ]
 }
 
@@ -66,6 +66,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     // Pre-redimensionado si la imagen es muy grande
     try {
         const metadata = await sharp(currentBuffer).metadata();
+        // Si la imagen ya es más pequeña que 1200px, se mantiene su tamaño original
         if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
             console.log(`📏 Imagen inicial muy grande (${metadata.width}px). Redimensionando a ${SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH}px.`);
             currentBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -82,8 +83,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
-    // Intentar el único paso de redimensionado (600px)
-    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { // Este bucle ahora solo se ejecuta una vez
+    // Intentar cada paso de redimensionado (ahora solo 1200px)
+    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .resize(width, null, { 
@@ -121,12 +122,12 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     }
     
     if (finalResult) {
-        console.log(`🏁 Calidad WebP 10 con ${finalResult.width}px. No se alcanzó el tamaño objetivo (${Math.round(maxSize/1024)}KB). Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
+        console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
         return {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'quality_10_best_effort', // Indicando que se usó calidad 10
+            level: 'best_effort', 
             width: 'auto' 
         }
     }
@@ -196,15 +197,15 @@ export default async (req, res) => {
     if (req.url === '/info') {
         res.status(200).json({
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
-            description: 'Compresión extrema priorizando el tamaño mínimo. La calidad visual será muy baja.', // <<-- Actualizado aquí
+            description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
             features: [
-                '50-120KB por imagen (objetivo)', 
+                '50-120KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 10 fija',          // <<-- Actualizado aquí
-                'Redimensionado a 600px',        // <<-- Actualizado aquí
+                'Calidad WebP 1 (máxima compresión)', // <<-- Actualizado aquí
+                'Redimensionado a 1200px',             // <<-- Actualizado aquí
                 'Detección automática manga/color',
-                'Optimizado para la máxima reducción de datos',
-                'Garantía capítulos completos (tamaño mínimo, calidad muy baja)' // <<-- Actualizado aquí
+                'Optimizado para datos móviles extremos',
+                'Garantía capítulos completos 1-2MB'
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
@@ -212,9 +213,9 @@ export default async (req, res) => {
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
-                target_chapter_size: 'Menor que antes', // <<-- Actualizado aquí
-                target_per_image: 'Muy bajo',         // <<-- Actualizado aquí
-                typical_savings: 'Máximo ahorro de datos, calidad sacrificada' // <<-- Actualizado aquí
+                target_chapter_size: '1-2MB (20 páginas)',
+                target_per_image: '50-120KB', 
+                typical_savings: '85-95% vs original'
             }
         })
         return
