@@ -1,6 +1,6 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
 // Compresión: Optimización para legibilidad en 600px y tamaño < 100KB.
-// Forzado a formato WebP.
+// Forzado a formato WebP. Ahora con User-Agent REAL y Referer para evadir anti-bot.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
@@ -18,14 +18,6 @@ const SUPER_ULTRA_CONFIG = {
     COMPRESSION_PROFILE: { 
         manga: { webp: { quality: 5, effort: 6 } }, 
         color: { webp: { quality: 5, effort: 6 } }  
-    },
-    
-    // Configuración Sharp SUPER optimizada
-    SHARP_CONFIG: {
-        limitInputPixels: false,
-        sequentialRead: true,
-        density: 96,
-        failOn: 'none'
     },
     
     // Resolución preferida para todas las imágenes (600px)
@@ -96,7 +88,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 .toBuffer()
             
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                .toFormat('webp') // Forzar explícitamente el formato WebP
+                .toFormat('webp') 
                 .webp(config.webp) 
                 .toBuffer()
             
@@ -119,9 +111,6 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             
         } catch (error) {
             console.log(`⚠️ Error en width ${width}:`, error.message)
-            // Si hay un error de Sharp en la compresión, finalResult podría quedar null,
-            // lo que llevaría al error final de "no se pudo comprimir".
-            // Esto es preferible a enviar un archivo no-WebP con un header WebP.
             break; 
         }
     }
@@ -140,16 +129,21 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró ningún resultado válido')
 }
 
-// Función para descargar imagen (DIAGNÓSTICO AÑADIDO)
+// Función para descargar imagen (CON USER-AGENT Y REFERER DE NAVEGADOR)
 async function downloadImage(url) {
     try {
         console.log(`📥 Intentando descargar: ${url}`);
+
+        const parsedUrl = new URL(url);
+        const domain = parsedUrl.origin; 
+
         const response = await fetch(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; BandwidthHero/4.0)',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, como Gecko) Chrome/137.0.0.0 Mobile Safari/537.36', // <<-- CAMBIO CLAVE: TU USER-AGENT EXACTO
                 'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Connection': 'keep-alive',
+                'Referer': domain + '/', 
                 'Upgrade-Insecure-Requests': '1'
             },
             timeout: 60000, 
@@ -157,7 +151,8 @@ async function downloadImage(url) {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP Error Status: ${response.status} - ${response.statusText} for URL: ${url}`);
+            console.error(`❌ HTTP Error Status: ${response.status} - ${response.statusText} for URL: ${url}`);
+            return null; 
         }
 
         const arrayBuffer = await response.arrayBuffer(); 
@@ -165,33 +160,22 @@ async function downloadImage(url) {
         
         console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`);
 
-        // <<-- INICIO DE LÓGICA DE DIAGNÓSTICO
-        // Intentar identificar el tipo de archivo descargado por sus "magic bytes"
-        // Fuente: https://en.wikipedia.org/wiki/List_of_file_signatures
-        const fileSignature = buffer.slice(0, 12).toString('hex'); // Tomamos más bytes para mayor precisión
-        let detectedType = 'desconocido';
-
-        if (fileSignature.startsWith('89504e470d0a1a0a')) { // PNG: ‰PNG\r\n\x1a\n
-            detectedType = 'PNG';
-        } else if (fileSignature.startsWith('ffd8ff')) { // JPEG: ÿØÿ
-            detectedType = 'JPEG';
-        } else if (fileSignature.startsWith('52494646') && buffer.slice(8, 12).toString('ascii') === 'WEBP') { // RIFF....WEBP (WebP)
-            detectedType = 'WEBP';
-        } else if (fileSignature.startsWith('ffd8ffe000104a4649460001')) { // JPEG (JFIF)
-            detectedType = 'JPEG (JFIF)';
-        } else if (fileSignature.startsWith('0000001866747970')) { // HEIF/AVIF (ftyp) - estos son más complejos de identificar solo con magic bytes
-             detectedType = 'HEIC/AVIF (posible)';
+        if (buffer.length === 0) {
+            console.error(`❌ Descarga de 0KB para URL: ${url}. Probablemente protección anti-scraping.`);
+            return null; 
+        } else if (buffer.length < 500) { 
+            try {
+                await sharp(buffer).metadata(); 
+            } catch (sharpError) {
+                console.error(`❌ Buffer muy pequeño (${buffer.length} bytes) y no parece ser una imagen válida para URL: ${url}. Error Sharp: ${sharpError.message}`);
+                return null; 
+            }
         }
-        
-        console.log(`🔍 DIAGNÓSTICO MAGIC BYTES: ${fileSignature} -> Tipo de archivo detectado: ${detectedType}`);
-        console.log(`🔍 DIAGNÓSTICO HEADERS: Content-Type = ${response.headers.get('content-type') || 'No Content-Type header'}`);
-        // <<-- FIN DE LÓGICA DE DIAGNÓSTICO
-
         return buffer;
 
     } catch (error) {
         console.error(`❌ Error al descargar imagen ${url}:`, error.message);
-        throw error;
+        return null; 
     }
 }
 
@@ -256,7 +240,6 @@ export default async (req, res) => {
     }
     
     try {
-        // Extraer parámetros
         const url = new URL(req.url, `http://${req.headers.host}`) 
         const imageUrl = url.searchParams.get('url')
         const mode = url.searchParams.get('mode') || 'strict'
@@ -266,46 +249,49 @@ export default async (req, res) => {
                 error: 'URL de imagen requerida',
                 usage: '/?url=IMAGE_URL&mode=strict|relaxed'
             })
-            return
+            return;
         }
         
-        console.log(`🚀 Procesando: ${imageUrl} (modo: ${mode})`)
+        console.log(`🚀 Procesando: ${imageUrl} (modo: ${mode})`);
         
-        // Descargar imagen
-        const imageBuffer = await downloadImage(imageUrl)
+        const imageBuffer = await downloadImage(imageUrl);
         
-        // Verificar tamaño de entrada
+        if (imageBuffer === null) {
+            console.log(`↩️ Redirigiendo a la URL original debido a descarga/validación fallida: ${imageUrl}`);
+            res.statusCode = 302; 
+            res.setHeader('Location', imageUrl);
+            res.end(); 
+            return; 
+        }
+        
         if (imageBuffer.length > SUPER_ULTRA_CONFIG.MAX_INPUT_SIZE) {
-            throw new Error(`Imagen muy grande: ${Math.round(imageBuffer.length/1024/1024)}MB > ${SUPER_ULTRA_CONFIG.MAX_INPUT_SIZE/1024/1024}MB límite`)
+            throw new Error(`Imagen muy grande: ${Math.round(imageBuffer.length/1024/1024)}MB > ${SUPER_ULTRA_CONFIG.MAX_INPUT_SIZE/1024/1024}MB límite`);
         }
         
-        // Comprimir con algoritmo SUPER ULTRA
-        const result = await superUltraCompress(imageBuffer, null, mode)
+        const result = await superUltraCompress(imageBuffer, null, mode);
         
-        console.log(`✅ ÉXITO: ${Math.round(result.size/1024)}KB (${result.compression}% ahorro)`)
-        console.log(`📊 Nivel ${result.level}, ${result.width}px, formato ${result.format}`)
+        console.log(`✅ ÉXITO: ${Math.round(result.size/1024)}KB (${result.compression}% ahorro)`);
+        console.log(`📊 Nivel ${result.level}, ${result.width}px, formato ${result.format}`);
         
-        // Configurar headers de respuesta
-        const contentType = 'image/webp' 
-        res.setHeader('Content-Type', contentType)
-        res.setHeader('Content-Length', result.size)
-        res.setHeader('X-Original-Size', result.originalSize)
-        res.setHeader('X-Compressed-Size', result.size)
-        res.setHeader('X-Compression-Ratio', `${result.compression}%`)
-        res.setHeader('X-Compression-Level', result.level)
-        res.setHeader('X-Format', result.format)
-        res.setHeader('X-Width', result.width)
-        res.setHeader('Cache-Control', 'public, max-age=86400') // Cache 24h
+        const contentType = 'image/webp'; 
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', result.size);
+        res.setHeader('X-Original-Size', result.originalSize);
+        res.setHeader('X-Compressed-Size', result.size);
+        res.setHeader('X-Compression-Ratio', `${result.compression}%`);
+        res.setHeader('X-Compression-Level', result.level);
+        res.setHeader('X-Format', result.format);
+        res.setHeader('X-Width', result.width);
+        res.setHeader('Cache-Control', 'public, max-age=86400'); 
         
-        // Enviar imagen comprimida
-        res.status(200).send(result.buffer)
+        res.status(200).send(result.buffer);
         
     } catch (error) {
-        console.error('❌ Error en el handler principal:', error.message)
+        console.error('❌ Error en el handler principal:', error.message);
         res.status(500).json({
             error: 'Error en super ultra compresión',
             message: process.env.NODE_ENV === 'development' ? error.message : 'Error procesando imagen',
             timestamp: new Date().toISOString()
-        })
+        });
     }
 }
