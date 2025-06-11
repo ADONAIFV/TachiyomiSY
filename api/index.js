@@ -6,16 +6,16 @@ import fetch from 'node-fetch';
 
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
-    // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // <<-- Objetivo de 120KB para modo relaxed
+    // Límites EXTREMOS
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen para modo relaxed
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD UNIFORME)
+    // Perfiles de compresión OPTIMIZADOS para balance calidad/tamaño/velocidad
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 55, effort: 6 }, jpeg: { quality: 60 } }, // <<-- Calidad alta para manga
-        color: { webp: { quality: 55, effort: 6 }, jpeg: { quality: 60 } }  // <<-- Calidad alta para color
+        manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
+        color: { webp: { quality: 40, effort: 6 }, jpeg: { quality: 45 } }  // <<-- CAMBIO CLAVE: Calidad ajustada a 40/45
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,10 +26,10 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado optimizado
+    // Redimensionado estratégico para balance velocidad/calidad
     RESIZE_STEPS: [ 
-        600, // <<-- Se empieza con 600px
-        500  // <<-- Se añade 500px como siguiente opción
+        600, // <<-- CAMBIO CLAVE: Primer intento a 600px
+        500  // <<-- CAMBIO CLAVE: Segundo intento a 500px
     ]
 }
 
@@ -83,7 +83,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
     
-    // Intentar cada paso de redimensionado
+    // Intentar cada paso de redimensionado (600px y 500px)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -234,12 +234,12 @@ export default async (req, res) => {
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)', // Actualizado en la descripción
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)',
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
                 target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-120KB', // Actualizado en la descripción
+                target_per_image: '50-100KB',
                 typical_savings: '85-95% vs original'
             }
         })
