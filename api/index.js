@@ -7,15 +7,15 @@ import fetch from 'node-fetch';
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
     // Límites EXTREMOS - Para lograr capítulos de 1-2MB total
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (20 páginas = 1MB capítulo)
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // <<-- 120KB por imagen para modo relaxed
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
+    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfil de compresión ÚNICO para WebP (SIN JPEG)
+    // Perfil de compresión ÚNICO para WebP (CALIDAD 70 para ambos)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 30, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 30
-        color: { webp: { quality: 30, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 30 para color también
+        manga: { webp: { quality: 70, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 70
+        color: { webp: { quality: 70, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 70 para color también
     },
     
     // Configuración Sharp SUPER optimizada
@@ -26,10 +26,10 @@ const SUPER_ULTRA_CONFIG = {
         failOn: 'none'
     },
     
-    // Redimensionado MUY agresivo desde el principio
+    // Redimensionado a resoluciones muy bajas
     RESIZE_STEPS: [ 
-        600, // <<-- CAMBIO CLAVE: Solo 600px
-        500  // <<-- CAMBIO CLAVE: Solo 500px
+        300, // <<-- CAMBIO CLAVE: 300px
+        200  // <<-- CAMBIO CLAVE: 200px
     ]
 }
 
@@ -83,7 +83,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
-    // Intentar cada paso de redimensionado (ahora 600px y 500px)
+    // Intentar cada paso de redimensionado (ahora 300px y 200px)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -95,7 +95,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             
             // Siempre intentar WebP (ahora es el único formato)
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                .webp(config.webp) // <<-- Solo WebP
+                .webp(config.webp) 
                 .toBuffer()
             
             console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
@@ -103,20 +103,17 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             if (webpResult.length <= maxSize) {
                 return {
                     buffer: webpResult,
-                    format: 'webp', // <<-- Formato fijo
+                    format: 'webp', 
                     size: webpResult.length,
                     originalSize: originalInputSize, 
                     compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                    level: config.webp.quality, // <<-- Nivel es la calidad WebP
+                    level: config.webp.quality, 
                     width: width
                 }
             }
-            // Guardar el mejor resultado (más pequeño) encontrado hasta ahora
             if (!finalResult || webpResult.length < finalResult.size) {
                  finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
             }
-            
-            // <<-- ELIMINADA LÓGICA DE JPEG
             
         } catch (error) {
             console.log(`⚠️ Error en width ${width}:`, error.message)
@@ -150,7 +147,7 @@ async function downloadImage(url) {
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1'
             },
-            timeout: 60000, // <<-- CAMBIO CLAVE: Aumentado a 60 segundos de timeout para la descarga
+            timeout: 60000, 
             redirect: 'follow'
         });
 
@@ -202,22 +199,22 @@ export default async (req, res) => {
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
             description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
             features: [
-                '50-120KB por imagen según modo', // <<-- Actualizado aquí también
-                'Compresión exclusiva WebP',     // <<-- Actualizado aquí
-                'Calidad WebP 30 fija',          // <<-- Actualizado aquí
-                'Redimensionado a 600px/500px',  // <<-- Actualizado aquí
+                '50-120KB por imagen según modo', 
+                'Compresión exclusiva WebP',     
+                'Calidad WebP 70 fija',          // <<-- Actualizado aquí
+                'Redimensionado a 300px/200px',  // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
                 'Garantía capítulos completos 1-2MB'
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)', // <<-- Actualizado aquí
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)', 
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
                 target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-120KB', // <<-- Actualizado aquí
+                target_per_image: '50-120KB', 
                 typical_savings: '85-95% vs original'
             }
         })
@@ -261,7 +258,7 @@ export default async (req, res) => {
         console.log(`📊 Nivel ${result.level}, ${result.width}px, formato ${result.format}`)
         
         // Configurar headers de respuesta
-        const contentType = 'image/webp' // <<-- Formato fijo
+        const contentType = 'image/webp' 
         res.setHeader('Content-Type', contentType)
         res.setHeader('Content-Length', result.size)
         res.setHeader('X-Original-Size', result.originalSize)
