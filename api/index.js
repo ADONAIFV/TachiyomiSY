@@ -12,24 +12,18 @@ const SUPER_ULTRA_CONFIG = {
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD PARA COLOR)
+    // Perfiles de compresión SUPER agresivos (MÁXIMA CALIDAD CON 60S DE MARGEN)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 25, effort: 6 }, jpeg: { quality: 30 } }, 
-        color: { webp: { quality: 50, effort: 6 }, jpeg: { quality: 55 } }  
-    },
-    
-    // Configuración Sharp SUPER optimizada
-    SHARP_CONFIG: {
-        limitInputPixels: false,
-        sequentialRead: true,
-        density: 96,
-        failOn: 'none'
+        manga: { webp: { quality: 30, effort: 6 }, jpeg: { quality: 35 } }, 
+        color: { webp: { quality: 70, effort: 6 }, jpeg: { quality: 75 } }  
     },
     
     // Redimensionado MUY agresivo desde el principio
     RESIZE_STEPS: [ 
-        800, // <<-- CAMBIO CLAVE: Se mantiene 800px
-        600  // <<-- CAMBIO CLAVE: Se añade 600px
+        800, 
+        600,
+        500, // <<-- CAMBIO CLAVE: Se añade 500px
+        400  // <<-- CAMBIO CLAVE: Se añade 400px
     ]
 }
 
@@ -83,7 +77,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: quality=${config.webp?.quality || config.jpeg?.quality}`);
     
-    // Intentar cada paso de redimensionado (ahora hay 800px y 600px)
+    // Intentar cada paso de redimensionado (ahora con 800, 600, 500, 400px)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) {
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -236,11 +230,6 @@ export default async (req, res) => {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
                 relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)',
                 headers: 'X-Super-Ultra-Compression para verificación'
-            },
-            compression_stats: {
-                target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-100KB',
-                typical_savings: '85-95% vs original'
             }
         })
         return
