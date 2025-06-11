@@ -9,15 +9,15 @@ import fetch from 'node-fetch';
 const SUPER_ULTRA_CONFIG = {
     // Límites de tamaño de salida
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
-    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // <<-- CAMBIO CLAVE: 100KB por imagen para modo relaxed
+    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (objetivo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
     MAX_INPUT_RESOLUTION_WIDTH: 600, // Redimensionar entradas grandes a 600px
     
     // Perfil de compresión ÚNICO para WebP (Calidad 5)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 5, effort: 6 } }, // Calidad WebP 5
-        color: { webp: { quality: 5, effort: 6 } }  // Calidad WebP 5
+        manga: { webp: { quality: 5, effort: 6 } }, 
+        color: { webp: { quality: 5, effort: 6 } }  
     },
     
     // Configuración Sharp SUPER optimizada
@@ -96,7 +96,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 .toBuffer()
             
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                .toFormat('webp') // <<-- CAMBIO CLAVE: Forzar explícitamente el formato WebP
+                .toFormat('webp') // Forzar explícitamente el formato WebP
                 .webp(config.webp) 
                 .toBuffer()
             
@@ -140,7 +140,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró ningún resultado válido')
 }
 
-// Función para descargar imagen
+// Función para descargar imagen (DIAGNÓSTICO AÑADIDO)
 async function downloadImage(url) {
     try {
         console.log(`📥 Intentando descargar: ${url}`);
@@ -164,6 +164,29 @@ async function downloadImage(url) {
         const buffer = Buffer.from(arrayBuffer);          
         
         console.log(`📥 Descargado: ${Math.round(buffer.length/1024)}KB de ${response.url} (URL final)`);
+
+        // <<-- INICIO DE LÓGICA DE DIAGNÓSTICO
+        // Intentar identificar el tipo de archivo descargado por sus "magic bytes"
+        // Fuente: https://en.wikipedia.org/wiki/List_of_file_signatures
+        const fileSignature = buffer.slice(0, 12).toString('hex'); // Tomamos más bytes para mayor precisión
+        let detectedType = 'desconocido';
+
+        if (fileSignature.startsWith('89504e470d0a1a0a')) { // PNG: ‰PNG\r\n\x1a\n
+            detectedType = 'PNG';
+        } else if (fileSignature.startsWith('ffd8ff')) { // JPEG: ÿØÿ
+            detectedType = 'JPEG';
+        } else if (fileSignature.startsWith('52494646') && buffer.slice(8, 12).toString('ascii') === 'WEBP') { // RIFF....WEBP (WebP)
+            detectedType = 'WEBP';
+        } else if (fileSignature.startsWith('ffd8ffe000104a4649460001')) { // JPEG (JFIF)
+            detectedType = 'JPEG (JFIF)';
+        } else if (fileSignature.startsWith('0000001866747970')) { // HEIF/AVIF (ftyp) - estos son más complejos de identificar solo con magic bytes
+             detectedType = 'HEIC/AVIF (posible)';
+        }
+        
+        console.log(`🔍 DIAGNÓSTICO MAGIC BYTES: ${fileSignature} -> Tipo de archivo detectado: ${detectedType}`);
+        console.log(`🔍 DIAGNÓSTICO HEADERS: Content-Type = ${response.headers.get('content-type') || 'No Content-Type header'}`);
+        // <<-- FIN DE LÓGICA DE DIAGNÓSTICO
+
         return buffer;
 
     } catch (error) {
@@ -206,8 +229,8 @@ export default async (req, res) => {
             features: [
                 '50-100KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 5 (alta compresión)', // <<-- Actualizado aquí
-                'Redimensionado a 600px',             // <<-- Actualizado aquí
+                'Calidad WebP 5 (alta compresión)', 
+                'Redimensionado a 600px',             
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
                 'Garantía capítulos completos 1-2MB'
