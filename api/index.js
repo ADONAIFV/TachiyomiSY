@@ -8,15 +8,23 @@ import fetch from 'node-fetch';
 const SUPER_ULTRA_CONFIG = {
     // Límites de tamaño de salida
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
-    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // <<-- CAMBIO CLAVE: 100KB por imagen para modo relaxed
+    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (objetivo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
     MAX_INPUT_RESOLUTION_WIDTH: 600, // Redimensionar entradas grandes a 600px
     
-    // Perfil de compresión ÚNICO para WebP (Calidad 10 - excelente equilibrio)
+    // Perfil de compresión ÚNICO para WebP (Calidad 5)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 10, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 10
-        color: { webp: { quality: 10, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 10
+        manga: { webp: { quality: 5, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 5
+        color: { webp: { quality: 5, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 5
+    },
+    
+    // Configuración Sharp SUPER optimizada
+    SHARP_CONFIG: {
+        limitInputPixels: false,
+        sequentialRead: true,
+        density: 96,
+        failOn: 'none'
     },
     
     // Resolución preferida para todas las imágenes (600px)
@@ -193,7 +201,7 @@ export default async (req, res) => {
             features: [
                 '50-100KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 10 (excelente equilibrio)', // <<-- Actualizado aquí
+                'Calidad WebP 5 (alta compresión)', // <<-- Actualizado aquí
                 'Redimensionado a 600px',             // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
