@@ -1,5 +1,5 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
-// Compresión: Optimización para legibilidad en 500px y tamaño < 120KB.
+// Compresión: Optimización para legibilidad en 600px y tamaño < 100KB.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
@@ -7,29 +7,21 @@ import fetch from 'node-fetch';
 // Configuración SUPER ULTRA para capítulos <1-2MB
 const SUPER_ULTRA_CONFIG = {
     // Límites de tamaño de salida
-    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
-    MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen
+    MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
+    MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // <<-- CAMBIO CLAVE: 100KB por imagen para modo relaxed
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
     // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
-    MAX_INPUT_RESOLUTION_WIDTH: 500, // <<-- CAMBIO CLAVE: Reducir entradas grandes a 500px
+    MAX_INPUT_RESOLUTION_WIDTH: 600, // <<-- Redimensionar entradas grandes a 600px
     
-    // Perfil de compresión ÚNICO para WebP (Calidad 1: MÁXIMA COMPRESIÓN)
+    // Perfil de compresión ÚNICO para WebP (Calidad 15 - excelente equilibrio)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 1, effort: 6 } }, // Calidad WebP 1
-        color: { webp: { quality: 1, effort: 6 } }  // Calidad WebP 1
+        manga: { webp: { quality: 15, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 15
+        color: { webp: { quality: 15, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 15
     },
     
-    // Configuración Sharp SUPER optimizada
-    SHARP_CONFIG: {
-        limitInputPixels: false,
-        sequentialRead: true,
-        density: 96,
-        failOn: 'none'
-    },
-    
-    // Resolución preferida para todas las imágenes (500px)
+    // Resolución preferida para todas las imágenes (600px)
     RESIZE_STEPS: [ 
-        500 // <<-- CAMBIO CLAVE: Solo 500px como objetivo de redimensionado
+        600 // <<-- CAMBIO CLAVE: Solo 600px como objetivo de redimensionado
     ]
 }
 
@@ -64,8 +56,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     let currentBuffer = buffer
     let finalResult = null
 
-    // Pre-redimensionado si la imagen es muy grande (ej. > 500px)
-    // Se redimensionará a 500px. Si es menor, se mantiene su resolución original.
+    // Pre-redimensionado si la imagen es muy grande (ej. > 600px)
+    // Se redimensionará a 600px. Si es menor, se mantiene su resolución original.
     try {
         const metadata = await sharp(currentBuffer).metadata();
         if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
@@ -84,7 +76,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
-    // Intentar con la resolución de 500px
+    // Intentar con la resolución de 600px
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { 
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -199,22 +191,22 @@ export default async (req, res) => {
             service: 'Bandwidth Hero SUPER ULTRA v4.0.0',
             description: 'Compresión extrema garantizada para capítulos de manga <1-2MB',
             features: [
-                '50-120KB por imagen según modo', 
+                '50-100KB por imagen según modo', // <<-- Actualizado aquí
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 1 (máxima compresión)', 
-                'Redimensionado a 500px',             // <<-- Actualizado aquí
+                'Calidad WebP 15 (excelente equilibrio)', // <<-- Actualizado aquí
+                'Redimensionado a 600px',             // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
                 'Garantía capítulos completos 1-2MB'
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
-                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (120KB límite)', 
+                relaxed_mode: '/?url=IMAGE_URL&mode=relaxed (100KB límite)', // <<-- Actualizado aquí
                 headers: 'X-Super-Ultra-Compression para verificación'
             },
             compression_stats: {
                 target_chapter_size: '1-2MB (20 páginas)',
-                target_per_image: '50-120KB', 
+                target_per_image: '50-100KB', // <<-- Actualizado aquí
                 typical_savings: '85-95% vs original'
             }
         })
