@@ -1,6 +1,6 @@
 // Bandwidth Hero SUPER ULTRA - API Serverless para Vercel
-// Compresión: Optimización para legibilidad en 600px y tamaño < 100KB.
-// Forzado a formato WebP. Ahora con User-Agent REAL y Referer para evadir anti-bot.
+// Compresión: Optimización para legibilidad en 600px y tamaño < 100KB (WebP).
+// Fallback a PNG con calidad 5 y 450px si la conversión WebP falla.
 
 import sharp from 'sharp';
 import fetch from 'node-fetch';
@@ -11,8 +11,8 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen (objetivo)
     MAX_OUTPUT_SIZE_RELAXED: 100 * 1024, // 100KB por imagen (objetivo)
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado
-    MAX_INPUT_RESOLUTION_WIDTH: 600, // Redimensionar entradas grandes a 600px
+    // MAX_INPUT_RESOLUTION_WIDTH para pre-redimensionado (para WebP)
+    MAX_INPUT_RESOLUTION_WIDTH: 600, 
     
     // Perfil de compresión ÚNICO para WebP (Calidad 5)
     COMPRESSION_PROFILE: { 
@@ -20,9 +20,21 @@ const SUPER_ULTRA_CONFIG = {
         color: { webp: { quality: 5, effort: 6 } }  
     },
     
-    // Resolución preferida para todas las imágenes (600px)
+    // Configuración para el caso de fallback a PNG si la conversión a WebP falla
+    PNG_FALLBACK_QUALITY: 5, // <<-- CAMBIO CLAVE: Calidad PNG a 5
+    PNG_FALLBACK_RESOLUTION_WIDTH: 450, // <<-- CAMBIO CLAVE: Resolución PNG a 450px
+    
+    // Configuración Sharp SUPER optimizada
+    SHARP_CONFIG: {
+        limitInputPixels: false,
+        sequentialRead: true,
+        density: 96,
+        failOn: 'none'
+    },
+    
+    // Resolución preferida para todas las imágenes (WebP)
     RESIZE_STEPS: [ 
-        600 // Solo 600px como objetivo de redimensionado
+        600 // Solo 600px como objetivo de redimensionado para WebP
     ]
 }
 
@@ -56,6 +68,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     
     let currentBuffer = buffer
     let finalResult = null
+    let formatUsed = 'webp'; 
 
     // Pre-redimensionado si la imagen es muy grande (ej. > 600px)
     // Se redimensionará a 600px. Si es menor, se mantiene su resolución original.
@@ -77,7 +90,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     const config = SUPER_ULTRA_CONFIG.COMPRESSION_PROFILE[imageType];
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
-    // Intentar con la resolución de 600px
+    // Intentar con la resolución de 600px (para WebP)
     for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { 
         try {
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
@@ -87,26 +100,59 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 })
                 .toBuffer()
             
-            const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
-                .toFormat('webp') 
-                .webp(config.webp) 
-                .toBuffer()
-            
-            console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
-            
-            if (webpResult.length <= maxSize) {
-                return {
-                    buffer: webpResult,
-                    format: 'webp', 
-                    size: webpResult.length,
-                    originalSize: originalInputSize, 
-                    compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
-                    level: config.webp.quality, 
-                    width: width
+            // PRIMER INTENTO: WebP
+            try {
+                const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .toFormat('webp') 
+                    .webp(config.webp) 
+                    .toBuffer()
+                
+                console.log(`📊 WebP ${width}px: ${Math.round(webpResult.length/1024)}KB`)
+                
+                if (webpResult.length <= maxSize) {
+                    return {
+                        buffer: webpResult,
+                        format: 'webp', 
+                        size: webpResult.length,
+                        originalSize: originalInputSize, 
+                        compression: Math.round((1 - webpResult.length/originalInputSize) * 100),
+                        level: config.webp.quality, 
+                        width: width
+                    }
                 }
-            }
-            if (!finalResult || webpResult.length < finalResult.size) {
-                 finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
+                if (!finalResult || webpResult.length < finalResult.size) {
+                     finalResult = { buffer: webpResult, format: 'webp', size: webpResult.length }
+                }
+
+            } catch (webpError) {
+                console.warn(`⚠️ Falló conversión a WebP en ${width}px: ${webpError.message}. Intentando PNG fallback.`);
+                formatUsed = 'png'; 
+                // SEGUNDO INTENTO: PNG como fallback, redimensionando a 450px
+                const pngResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
+                    .resize(SUPER_ULTRA_CONFIG.PNG_FALLBACK_RESOLUTION_WIDTH, null, { // <<-- Redimensionar a 450px para PNG
+                        withoutEnlargement: true,
+                        fit: 'inside'
+                    })
+                    .toFormat('png') 
+                    .png({ quality: SUPER_ULTRA_CONFIG.PNG_FALLBACK_QUALITY }) // Aplicar calidad PNG 5
+                    .toBuffer();
+
+                console.log(`📊 PNG Fallback ${SUPER_ULTRA_CONFIG.PNG_FALLBACK_RESOLUTION_WIDTH}px: ${Math.round(pngResult.length/1024)}KB`);
+                
+                if (pngResult.length <= maxSize) {
+                    return {
+                        buffer: pngResult,
+                        format: 'png', 
+                        size: pngResult.length,
+                        originalSize: originalInputSize, 
+                        compression: Math.round((1 - pngResult.length/originalInputSize) * 100),
+                        level: SUPER_ULTRA_CONFIG.PNG_FALLBACK_QUALITY, 
+                        width: SUPER_ULTRA_CONFIG.PNG_FALLBACK_RESOLUTION_WIDTH
+                    }
+                }
+                if (!finalResult || pngResult.length < finalResult.size) {
+                    finalResult = { buffer: pngResult, format: 'png', size: pngResult.length }
+                }
             }
             
         } catch (error) {
@@ -116,7 +162,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     }
     
     if (finalResult) {
-        console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB`)
+        console.log(`🏁 No se alcanzó el tamaño objetivo. Usando el mejor resultado disponible: ${Math.round(finalResult.size/1024)}KB, formato ${finalResult.format}`)
         return {
             ...finalResult,
             originalSize: originalInputSize,
@@ -129,7 +175,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     throw new Error('No se pudo comprimir la imagen lo suficiente y no se encontró ningún resultado válido')
 }
 
-// Función para descargar imagen (CON USER-AGENT Y REFERER DE NAVEGADOR)
+// Función para descargar imagen
 async function downloadImage(url) {
     try {
         console.log(`📥 Intentando descargar: ${url}`);
@@ -139,7 +185,7 @@ async function downloadImage(url) {
 
         const response = await fetch(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, como Gecko) Chrome/137.0.0.0 Mobile Safari/537.36', // <<-- CAMBIO CLAVE: TU USER-AGENT EXACTO
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, como Gecko) Chrome/137.0.0.0 Mobile Safari/537.36', 
                 'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Connection': 'keep-alive',
@@ -217,7 +263,8 @@ export default async (req, res) => {
                 'Redimensionado a 600px',             
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
-                'Garantía capítulos completos 1-2MB'
+                'Garantía capítulos completos 1-2MB',
+                'Fallback a PNG (calidad 5, 450px) si WebP falla' // <<-- Actualizado aquí
             ],
             usage: {
                 strict_mode: '/?url=IMAGE_URL (50KB límite)',
@@ -273,7 +320,7 @@ export default async (req, res) => {
         console.log(`✅ ÉXITO: ${Math.round(result.size/1024)}KB (${result.compression}% ahorro)`);
         console.log(`📊 Nivel ${result.level}, ${result.width}px, formato ${result.format}`);
         
-        const contentType = 'image/webp'; 
+        const contentType = result.format === 'webp' ? 'image/webp' : 'image/png'; 
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', result.size);
         res.setHeader('X-Original-Size', result.originalSize);
