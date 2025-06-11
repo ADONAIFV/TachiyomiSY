@@ -10,13 +10,12 @@ const SUPER_ULTRA_CONFIG = {
     MAX_OUTPUT_SIZE_STRICT: 50 * 1024,   // 50KB por imagen
     MAX_OUTPUT_SIZE_RELAXED: 120 * 1024, // 120KB por imagen
     MAX_INPUT_SIZE: 15 * 1024 * 1024,    // 15MB máximo input
-    // MAX_INPUT_RESOLUTION_WIDTH se usará para el pre-redimensionado
-    MAX_INPUT_RESOLUTION_WIDTH: 1200, 
+    MAX_INPUT_RESOLUTION_WIDTH: 1200, // Máxima resolución de entrada para un pre-redimensionado
     
-    // Perfil de compresión ÚNICO para WebP (Calidad 30 - buen equilibrio)
+    // Perfil de compresión ÚNICO para WebP (Calidad 15 - punto dulce de calidad/tamaño)
     COMPRESSION_PROFILE: { 
-        manga: { webp: { quality: 30, effort: 6 } }, // <<-- Calidad WebP 30
-        color: { webp: { quality: 30, effort: 6 } }  // <<-- Calidad WebP 30
+        manga: { webp: { quality: 15, effort: 6 } }, // <<-- CAMBIO CLAVE: Calidad WebP 15
+        color: { webp: { quality: 15, effort: 6 } }  // <<-- CAMBIO CLAVE: Calidad WebP 15 para color también
     },
     
     // Configuración Sharp SUPER optimizada
@@ -29,7 +28,7 @@ const SUPER_ULTRA_CONFIG = {
     
     // Resolución preferida para todas las imágenes
     RESIZE_STEPS: [ 
-        1200 // <<-- Solo 1200px como objetivo de redimensionado principal
+        1200 // Solo 1200px como objetivo de redimensionado principal
     ]
 }
 
@@ -66,14 +65,14 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
 
     // Pre-redimensionado a 1200px si la imagen es más grande
     // Importante: No escalará imágenes pequeñas a 1200px si son menores,
-    // mantendrá su resolución original y aplicará calidad 30.
+    // mantendrá su resolución original y aplicará calidad 15.
     try {
         const metadata = await sharp(currentBuffer).metadata();
         if (metadata.width && metadata.width > SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH) {
             console.log(`📏 Imagen inicial muy grande (${metadata.width}px). Redimensionando a ${SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH}px.`);
             currentBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .resize(SUPER_ULTRA_CONFIG.MAX_INPUT_RESOLUTION_WIDTH, null, { 
-                    withoutEnlargement: true, // Mantener esta opción
+                    withoutEnlargement: true, 
                     fit: 'inside'
                 })
                 .toBuffer();
@@ -86,11 +85,8 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
     console.log(`🔄 Calidad de compresión aplicada: WebP quality=${config.webp.quality}`);
     
     // Intentar con la resolución de 1200px (o la resolución original si es menor y no se amplía)
-    // El bucle de RESIZE_STEPS ahora solo tiene 1200px
-    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { // Este bucle correrá solo una vez
+    for (const width of SUPER_ULTRA_CONFIG.RESIZE_STEPS) { 
         try {
-            // Si la imagen original (o la pre-redimensionada) ya es menor que 'width' (1200),
-            // y 'withoutEnlargement' es true, Sharp usará la resolución actual.
             const resizedBuffer = await sharp(currentBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .resize(width, null, { 
                     withoutEnlargement: true, 
@@ -98,7 +94,6 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
                 })
                 .toBuffer()
             
-            // Siempre intentar WebP
             const webpResult = await sharp(resizedBuffer, SUPER_ULTRA_CONFIG.SHARP_CONFIG)
                 .webp(config.webp) 
                 .toBuffer()
@@ -122,9 +117,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             
         } catch (error) {
             console.log(`⚠️ Error en width ${width}:`, error.message)
-            // Si hay un error con el redimensionado, finalResult seguirá siendo null o el mejor resultado encontrado hasta ahora.
-            // Para una única pasada, esto no es tan crítico como en un bucle con múltiples opciones.
-            break; // Salir del bucle si hay un error o ya se hizo el único intento
+            break; 
         }
     }
     
@@ -134,7 +127,7 @@ async function superUltraCompress(buffer, targetSize, mode = 'strict') {
             ...finalResult,
             originalSize: originalInputSize,
             compression: Math.round((1 - finalResult.size/originalInputSize) * 100),
-            level: 'best_effort', // Indica que no se logró el objetivo de tamaño, pero se devolvió el mejor intento con calidad 30.
+            level: 'best_effort', 
             width: 'auto' 
         }
     }
@@ -208,7 +201,7 @@ export default async (req, res) => {
             features: [
                 '50-120KB por imagen según modo', 
                 'Compresión exclusiva WebP',     
-                'Calidad WebP 30 fija',          // <<-- Actualizado aquí
+                'Calidad WebP 15 fija',          // <<-- Actualizado aquí
                 'Redimensionado a 1200px',       // <<-- Actualizado aquí
                 'Detección automática manga/color',
                 'Optimizado para datos móviles extremos',
